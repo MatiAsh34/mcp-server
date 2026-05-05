@@ -1,0 +1,22 @@
+{
+  "manifest_version": "0.2",
+  "name": "mcp-server",
+  "display_name": "Mati",
+  "version": "1.0.0",
+  "description": "MCP server para consultas PostgreSQL",
+  "author": {
+    "name": "Matias"
+  },
+  "server": {
+    "type": "node",
+    "entry_point": "src/server.js",
+    "mcp_config": {
+      "command": "node",
+      "args": [
+        "${__dirname}/src/server.js"
+      ],
+      "env": {}
+    }
+  },
+  "license": "MIT"
+}
