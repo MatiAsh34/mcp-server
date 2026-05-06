@@ -8,22 +8,63 @@ import {
   ListToolsRequestSchema,
   CallToolRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
-
 import { executeQueryTool } from "./tools/executeQuery.js";
-import { setupAuthRoutes } from "./auth.js";
-import { authMiddleware } from "./middleware.js";
+
+
+import { jwtVerify, createRemoteJWKSet } from 'jose';
+
+const JWKS = createRemoteJWKSet(new URL('seamless-ice-72-staging.authkit.app/oauth2/jwks'));
+
+const WWW_AUTHENTICATE_HEADER = [
+  'Bearer error="unauthorized"',
+  'error_description="Authorization needed"',
+  `resource_metadata="https://mcp-server-rga9.onrender.com/mcp/.well-known/oauth-protected-resource"`,
+].join(', ');
+
+const bearerTokenMiddleware = async (req, res, next) => {
+  const token = req.headers.authorization?.match(/^Bearer (.+)$/)?.[1];
+  if (!token) {
+    return res
+      .set('WWW-Authenticate', WWW_AUTHENTICATE_HEADER)
+      .status(401)
+      .json({ error: 'No token provided.' });
+  }
+
+  try {
+    const { payload } = await jwtVerify(token, JWKS, {
+      issuer: 'seamless-ice-72-staging.authkit.app',
+      audience: 'https://mcp.example.com',
+    });
+
+    // Use access token claims to populate request context.
+    // i.e. `req.userId = payload.sub;`
+
+    next();
+  } catch (err) {
+    return res
+      .set('WWW-Authenticate', WWW_AUTHENTICATE_HEADER)
+      .status(401)
+      .json({ error: 'Invalid bearer token.' });
+  }
+};
+
+app.get('/.well-known/oauth-protected-resource', (req, res) =>
+  res.json({
+    resource: `https://mcp-server-rga9.onrender.com/mcp`,
+    authorization_servers: ['https://seamless-ice-72-staging.authkit.app'],
+    bearer_methods_supported: ['header'],
+  }),
+);
 
 const app = express();
 app.use(express.json());
-
-setupAuthRoutes(app);
 
 function createMcpServer() {
   const server = new Server(
     { name: "postgres-mcp", version: "1.0.0" },
     { capabilities: { tools: {} } }
   );
-
+  
   server.setRequestHandler(ListToolsRequestSchema, async () => {
     return {
       tools: [
@@ -52,27 +93,9 @@ function createMcpServer() {
   return server;
 }
 
-// OAuth metadata - le dice a mcp-remote dónde está el auth server
-app.get("/.well-known/oauth-protected-resource", (req, res) => {
-  res.json({
-    resource: "https://mcp-server-rga9.onrender.com",
-    authorization_servers: ["https://seamless-ice-72-staging.authkit.app"],
-    bearer_methods_supported: ["header"],
-  });
-});
-
-// Dynamic client registration - requerido por mcp-remote
-app.post("/register", (req, res) => {
-  res.json({
-    client_id: process.env.WORKOS_CLIENT_ID,
-    client_secret: process.env.WORKOS_API_KEY,
-    redirect_uris: [process.env.WORKOS_REDIRECT_URI],
-  });
-});
-
-app.post("/mcp", authMiddleware, async (req, res) => {
+app.post("/mcp", async (req, res) => {
   const transport = new StreamableHTTPServerTransport({
-    sessionIdGenerator: undefined,
+    sessionIdGenerator: undefined, // stateless
   });
 
   const server = createMcpServer();
