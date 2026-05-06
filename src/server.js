@@ -10,9 +10,13 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 
 import { executeQueryTool } from "./tools/executeQuery.js";
+import { setupAuthRoutes } from "./auth.js";
+import { authMiddleware } from "./middleware.js";
 
 const app = express();
 app.use(express.json());
+
+setupAuthRoutes(app);
 
 function createMcpServer() {
   const server = new Server(
@@ -48,9 +52,9 @@ function createMcpServer() {
   return server;
 }
 
-app.post("/mcp", async (req, res) => {
+app.post("/mcp", authMiddleware, async (req, res) => {
   const transport = new StreamableHTTPServerTransport({
-    sessionIdGenerator: undefined, // stateless
+    sessionIdGenerator: undefined,
   });
 
   const server = createMcpServer();

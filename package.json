@@ -12,8 +12,10 @@
   "type": "module",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
+    "@workos-inc/node": "^9.1.1",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
+    "jose": "^6.2.3",
     "pg": "^8.20.0",
     "zod": "^4.3.6"
   }
