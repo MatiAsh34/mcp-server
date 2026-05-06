@@ -52,6 +52,24 @@ function createMcpServer() {
   return server;
 }
 
+// OAuth metadata - le dice a mcp-remote dónde está el auth server
+app.get("/.well-known/oauth-protected-resource", (req, res) => {
+  res.json({
+    resource: "https://mcp-server-rga9.onrender.com",
+    authorization_servers: ["https://seamless-ice-72-staging.authkit.app"],
+    bearer_methods_supported: ["header"],
+  });
+});
+
+// Dynamic client registration - requerido por mcp-remote
+app.post("/register", (req, res) => {
+  res.json({
+    client_id: process.env.WORKOS_CLIENT_ID,
+    client_secret: process.env.WORKOS_API_KEY,
+    redirect_uris: [process.env.WORKOS_REDIRECT_URI],
+  });
+});
+
 app.post("/mcp", authMiddleware, async (req, res) => {
   const transport = new StreamableHTTPServerTransport({
     sessionIdGenerator: undefined,
