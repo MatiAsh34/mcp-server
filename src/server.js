@@ -34,24 +34,11 @@ const JWKS = createRemoteJWKSet(
 const WWW_AUTHENTICATE_HEADER =
   `Bearer resource_metadata="${MCP_SERVER_URL}/.well-known/oauth-protected-resource"`;
 
-// Métodos MCP permitidos SIN auth
+// SOLO estos métodos sin auth
 const UNAUTHENTICATED_METHODS = new Set([
   "initialize",
   "notifications/initialized",
-  "tools/list",
 ]);
-
-// Tools protegidas
-const PROTECTED_TOOLS = new Set([
-  executeQueryTool.name,
-]);
-
-function isProtectedToolCall(body) {
-  return (
-    body?.method === "tools/call" &&
-    PROTECTED_TOOLS.has(body?.params?.name)
-  );
-}
 
 const bearerTokenMiddleware = async (
   req,
@@ -74,19 +61,10 @@ const bearerTokenMiddleware = async (
 
   const method = req.body?.method;
 
-  // Claude necesita estos métodos sin auth
+  // Métodos permitidos sin auth
   if (UNAUTHENTICATED_METHODS.has(method)) {
     console.log(
       `⚠️ Allowing ${method} without auth`
-    );
-
-    return next();
-  }
-
-  // Solo proteger tools privadas
-  if (!isProtectedToolCall(req.body)) {
-    console.log(
-      "⚠️ Non-protected MCP method allowed"
     );
 
     return next();
@@ -130,6 +108,7 @@ const bearerTokenMiddleware = async (
     return next();
   }
 
+  // Requerir auth para TODO lo demás
   if (!token) {
     console.log("❌ Missing Bearer token");
 
