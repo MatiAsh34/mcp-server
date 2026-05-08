@@ -13,7 +13,15 @@ import {
 import { executeQueryTool } from "./tools/executeQuery.js";
 
 const AUTHKIT_DOMAIN = process.env.WORKOS_AUTHKIT_DOMAIN;
-const MCP_SERVER_URL = process.env.MCP_SERVER_URL;
+const MCP_SERVER_URL  = process.env.MCP_SERVER_URL;
+
+// BASE_URL: solo protocolo + host, sin path.
+// Si MCP_SERVER_URL = "https://tudominio.com/mcp", BASE_URL = "https://tudominio.com"
+// Podés sobreescribirla con BASE_URL en el .env si necesitás otro valor.
+const BASE_URL = process.env.BASE_URL ?? (() => {
+  const u = new URL(MCP_SERVER_URL);
+  return `${u.protocol}//${u.host}`;
+})();
 
 const JWKS = createRemoteJWKSet(new URL(`${AUTHKIT_DOMAIN}/oauth2/jwks`));
 
@@ -56,20 +64,18 @@ const bearerTokenMiddleware = async (req, res, next) => {
 
 const app = express();
 app.use(express.json());
-// Needed to parse token exchange bodies from MCP clients
 app.use(express.urlencoded({ extended: true }));
 
 // ─── OAuth Discovery Endpoints ────────────────────────────────────────────────
 
 /**
  * Protected Resource Metadata (RFC 9728)
- * Tells MCP clients that this is a resource server and points to the
- * authorization server.
+ * Le dice al cliente MCP que este server ES el authorization server.
  */
 app.get("/.well-known/oauth-protected-resource", (req, res) => {
   res.json({
     resource: MCP_SERVER_URL,
-    authorization_servers: [MCP_SERVER_URL], // ← apunta a NOSOTROS, no a WorkOS
+    authorization_servers: [BASE_URL],
     bearer_methods_supported: ["header"],
   });
 });
@@ -77,63 +83,51 @@ app.get("/.well-known/oauth-protected-resource", (req, res) => {
 /**
  * Authorization Server Metadata (RFC 8414)
  *
- * Claude Web busca este endpoint en el MISMO ORIGEN que el MCP server.
- * Devolvemos nuestra metadata pero con los endpoints de authorize/token
- * apuntando a nuestros propios proxies (/api/oauth/authorize y /api/oauth/token)
- * en lugar de directamente a WorkOS.
+ * Claude Web busca este endpoint en el mismo origen que el MCP server.
+ * Lo construimos directamente sin depender de un fetch a WorkOS,
+ * apuntando authorize/token a nuestros propios proxies.
+ *
+ * registration_endpoint sigue apuntando a WorkOS para que DCR/CIMD funcione.
  */
-app.get("/.well-known/oauth-authorization-server", async (req, res) => {
-  try {
-    const upstream = await fetch(
-      `${AUTHKIT_DOMAIN}/.well-known/oauth-authorization-server`
-    );
-    const metadata = await upstream.json();
-
-    // Sobreescribimos los endpoints para que apunten a nuestro proxy
-    res.json({
-      ...metadata,
-      issuer: MCP_SERVER_URL,
-      authorization_endpoint: `${MCP_SERVER_URL}/api/oauth/authorize`,
-      token_endpoint: `${MCP_SERVER_URL}/api/oauth/token`,
-    });
-  } catch (err) {
-    console.error("Error al obtener metadatos de AuthKit:", err.message);
-    res.status(502).json({ error: "No se pudo obtener los metadatos del authorization server." });
-  }
+app.get("/.well-known/oauth-authorization-server", (req, res) => {
+  res.json({
+    issuer: BASE_URL,
+    authorization_endpoint:               `${BASE_URL}/api/oauth/authorize`,
+    token_endpoint:                        `${BASE_URL}/api/oauth/token`,
+    registration_endpoint:                 `${AUTHKIT_DOMAIN}/oauth2/register`,
+    scopes_supported:                      ["openid", "profile", "email", "offline_access"],
+    response_types_supported:              ["code"],
+    response_modes_supported:              ["query"],
+    grant_types_supported:                 ["authorization_code", "refresh_token"],
+    code_challenge_methods_supported:      ["S256"],
+    token_endpoint_auth_methods_supported: ["none", "client_secret_post", "client_secret_basic"],
+  });
 });
 
 // ─── OAuth Proxy Endpoints ────────────────────────────────────────────────────
 
 /**
- * Proxy de Authorize → WorkOS
- *
- * Claude Web redirige al usuario aquí. Nosotros hacemos un 302 hacia el
- * endpoint real de WorkOS, pasando todos los query params intactos.
+ * Proxy Authorize → WorkOS
+ * Claude redirige al usuario acá; nosotros hacemos 302 a WorkOS con los mismos params.
  */
 app.get("/api/oauth/authorize", (req, res) => {
-  const upstreamUrl = new URL(`${AUTHKIT_DOMAIN}/oauth2/authorize`);
+  const upstream = new URL(`${AUTHKIT_DOMAIN}/oauth2/authorize`);
 
-  // Reenviar todos los query params tal cual vienen del cliente MCP
   for (const [key, value] of Object.entries(req.query)) {
-    upstreamUrl.searchParams.set(key, value);
+    upstream.searchParams.set(key, value);
   }
 
-  console.log(`[OAuth] Authorize → ${upstreamUrl.toString()}`);
-  res.redirect(302, upstreamUrl.toString());
+  console.log(`[OAuth] Authorize → ${upstream.toString()}`);
+  res.redirect(302, upstream.toString());
 });
 
 /**
- * Proxy de Token → WorkOS
- *
- * Claude Web hace POST acá para intercambiar el code por un access token.
- * Nosotros reenviamos la request a WorkOS y devolvemos la respuesta al cliente.
+ * Proxy Token → WorkOS
+ * Claude hace POST acá para intercambiar el code por un access token.
  */
 app.post("/api/oauth/token", async (req, res) => {
   try {
     const upstreamUrl = `${AUTHKIT_DOMAIN}/oauth2/token`;
-
-    // Reconstruir el body como application/x-www-form-urlencoded
-    // (que es lo que esperan los token endpoints de OAuth 2.x)
     const body = new URLSearchParams(req.body).toString();
 
     console.log(`[OAuth] Token exchange → ${upstreamUrl}`);
@@ -142,7 +136,6 @@ app.post("/api/oauth/token", async (req, res) => {
       method: "POST",
       headers: {
         "Content-Type": "application/x-www-form-urlencoded",
-        // Reenviar Authorization header si viene (client_secret_basic)
         ...(req.headers.authorization
           ? { Authorization: req.headers.authorization }
           : {}),
@@ -151,7 +144,6 @@ app.post("/api/oauth/token", async (req, res) => {
     });
 
     const data = await upstream.json();
-
     res.status(upstream.status).json(data);
   } catch (err) {
     console.error("Error en token proxy:", err.message);
@@ -167,23 +159,19 @@ function createMcpServer() {
     { capabilities: { tools: {} } }
   );
 
-  server.setRequestHandler(ListToolsRequestSchema, async () => {
-    return {
-      tools: [
-        {
-          name: executeQueryTool.name,
-          description: "Ejecuta consultas SQL SELECT en PostgreSQL",
-          inputSchema: {
-            type: "object",
-            properties: {
-              query: { type: "string" },
-            },
-            required: ["query"],
-          },
+  server.setRequestHandler(ListToolsRequestSchema, async () => ({
+    tools: [
+      {
+        name: executeQueryTool.name,
+        description: "Ejecuta consultas SQL SELECT en PostgreSQL",
+        inputSchema: {
+          type: "object",
+          properties: { query: { type: "string" } },
+          required: ["query"],
         },
-      ],
-    };
-  });
+      },
+    ],
+  }));
 
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     if (request.params.name === executeQueryTool.name) {
@@ -201,7 +189,6 @@ app.post("/mcp", bearerTokenMiddleware, async (req, res) => {
   });
 
   const server = createMcpServer();
-
   await server.connect(transport);
   await transport.handleRequest(req, res, req.body);
 });
@@ -211,4 +198,6 @@ app.post("/mcp", bearerTokenMiddleware, async (req, res) => {
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`MCP server corriendo en http://localhost:${PORT}/mcp`);
+  console.log(`BASE_URL: ${BASE_URL}`);
+  console.log(`MCP_SERVER_URL: ${MCP_SERVER_URL}`);
 });
