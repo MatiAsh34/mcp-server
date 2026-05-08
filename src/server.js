@@ -15,6 +15,14 @@ import { executeQueryTool } from "./tools/executeQuery.js";
 const AUTHKIT_DOMAIN = process.env.WORKOS_AUTHKIT_DOMAIN;
 const MCP_SERVER_URL = process.env.MCP_SERVER_URL;
 
+// BASE_URL es el origen sin path (ej: "https://tudominio.com")
+// Se usa para los OAuth endpoints para que no hereden el path de MCP_SERVER_URL
+// Podés sobreescribirla con la variable de entorno BASE_URL si tu setup es distinto
+const BASE_URL = process.env.BASE_URL ?? (() => {
+  const u = new URL(MCP_SERVER_URL);
+  return `${u.protocol}//${u.host}`;
+})();
+
 const JWKS = createRemoteJWKSet(new URL(`${AUTHKIT_DOMAIN}/oauth2/jwks`));
 
 const WWW_AUTHENTICATE_HEADER = [
@@ -92,9 +100,9 @@ app.get("/.well-known/oauth-authorization-server", async (req, res) => {
     // Sobreescribimos los endpoints para que apunten a nuestro proxy
     res.json({
       ...metadata,
-      issuer: MCP_SERVER_URL,
-      authorization_endpoint: `${MCP_SERVER_URL}/api/oauth/authorize`,
-      token_endpoint: `${MCP_SERVER_URL}/api/oauth/token`,
+      issuer: BASE_URL,
+      authorization_endpoint: `${BASE_URL}/api/oauth/authorize`,
+      token_endpoint: `${BASE_URL}/api/oauth/token`,
     });
   } catch (err) {
     console.error("Error al obtener metadatos de AuthKit:", err.message);
