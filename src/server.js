@@ -3,11 +3,8 @@ dotenv.config();
 
 import express from "express";
 import { jwtVerify, createRemoteJWKSet } from "jose";
-
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
-
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-
 import {
   ListToolsRequestSchema,
   CallToolRequestSchema,
@@ -15,366 +12,127 @@ import {
 
 import { executeQueryTool } from "./tools/executeQuery.js";
 
-const AUTHKIT_DOMAIN =
-  process.env.WORKOS_AUTHKIT_DOMAIN;
+// ─── Config ────────────────────────────────────────────────────────────────────
+// WORKOS_AUTHKIT_DOMAIN  → e.g. "https://your-subdomain.authkit.app"
+// MCP_SERVER_URL         → e.g. "https://mcp.example.com"  (public URL de este server)
+const AUTHKIT_DOMAIN = process.env.WORKOS_AUTHKIT_DOMAIN;
+const MCP_SERVER_URL = process.env.MCP_SERVER_URL;
 
-const MCP_SERVER_URL =
-  process.env.MCP_SERVER_URL;
-
-const WORKOS_CLIENT_ID =
-  process.env.WORKOS_CLIENT_ID;
-
-const DISABLE_AUTH =
-  process.env.DISABLE_AUTH === "true";
-
-const JWKS = createRemoteJWKSet(
-  new URL(`${AUTHKIT_DOMAIN}/oauth2/jwks`)
-);
-
-const WWW_AUTHENTICATE_HEADER =
-  `Bearer resource_metadata="${MCP_SERVER_URL}/.well-known/oauth-protected-resource"`;
-
-// SOLO estos métodos sin auth
-const UNAUTHENTICATED_METHODS = new Set([
-  "initialize",
-  "notifications/initialized",
-]);
-
-const bearerTokenMiddleware = async (
-  req,
-  res,
-  next
-) => {
-  console.log(
-    "\n================ MCP REQUEST ================"
+if (!AUTHKIT_DOMAIN || !MCP_SERVER_URL) {
+  throw new Error(
+    "Faltan variables de entorno: WORKOS_AUTHKIT_DOMAIN y MCP_SERVER_URL son obligatorias."
   );
+}
 
-  console.log("Method:", req.method);
-  console.log("URL:", req.originalUrl);
-  console.log("Headers:", req.headers);
-  console.log("Body:", req.body);
+// JWKS remoto de AuthKit — se cachea automáticamente por `jose`
+const JWKS = createRemoteJWKSet(new URL(`${AUTHKIT_DOMAIN}/oauth2/jwks`));
 
-  console.log(
-    "AUTH HEADER:",
-    req.headers.authorization
-  );
+// Header WWW-Authenticate que indica al cliente MCP dónde encontrar los metadatos
+const WWW_AUTHENTICATE_HEADER = [
+  'Bearer error="unauthorized"',
+  'error_description="Se requiere autorización"',
+  `resource_metadata="${MCP_SERVER_URL}/.well-known/oauth-protected-resource"`,
+].join(", ");
 
-  const method = req.body?.method;
+// ─── Middleware de autenticación Bearer ────────────────────────────────────────
+const bearerTokenMiddleware = async (req, res, next) => {
+  const token = req.headers.authorization?.match(/^Bearer (.+)$/)?.[1];
 
-  // Métodos permitidos sin auth
-  if (UNAUTHENTICATED_METHODS.has(method)) {
-    console.log(
-      `⚠️ Allowing ${method} without auth`
-    );
-
-    return next();
-  }
-
-  const token =
-    req.headers.authorization
-      ?.match(/^Bearer (.+)$/)?.[1];
-
-  // BYPASS TEMPORAL DEBUG
-  if (DISABLE_AUTH) {
-    console.log(
-      "⚠️ AUTH BYPASS ENABLED ⚠️"
-    );
-
-    if (token) {
-      try {
-        const payload = JSON.parse(
-          Buffer.from(
-            token.split(".")[1],
-            "base64url"
-          ).toString()
-        );
-
-        console.log(
-          "JWT Payload (sin verificar):",
-          payload
-        );
-      } catch (err) {
-        console.log(
-          "No se pudo parsear JWT:",
-          err.message
-        );
-      }
-    } else {
-      console.log(
-        "No Bearer token provided."
-      );
-    }
-
-    return next();
-  }
-
-  // Requerir auth para TODO lo demás
   if (!token) {
-    console.log("❌ Missing Bearer token");
-
     return res
-      .set(
-        "WWW-Authenticate",
-        WWW_AUTHENTICATE_HEADER
-      )
+      .set("WWW-Authenticate", WWW_AUTHENTICATE_HEADER)
       .status(401)
-      .json({
-        error:
-          "No se proporcionó token de autorización.",
-      });
+      .json({ error: "No se proporcionó token de autorización." });
   }
 
   try {
-    console.log("🔍 Verificando JWT...");
+    const { payload } = await jwtVerify(token, JWKS, {
+      issuer: AUTHKIT_DOMAIN,
+      audience: MCP_SERVER_URL,
+    });
 
-    const { payload } = await jwtVerify(
-      token,
-      JWKS,
-      {
-        issuer: AUTHKIT_DOMAIN,
-        audience: WORKOS_CLIENT_ID,
-      }
-    );
-
-    console.log("✅ JWT válido");
-
-    console.log(
-      "JWT Payload:",
-      payload
-    );
-
-    req.auth = payload;
-
-    return next();
+    next();
   } catch (err) {
-    console.error(
-      "❌ Token inválido:",
-      err
-    );
-
+    console.error("Token inválido:", err.message);
     return res
-      .set(
-        "WWW-Authenticate",
-        WWW_AUTHENTICATE_HEADER
-      )
+      .set("WWW-Authenticate", WWW_AUTHENTICATE_HEADER)
       .status(401)
-      .json({
-        error:
-          "Token Bearer inválido o expirado.",
-      });
+      .json({ error: "Token Bearer inválido o expirado." });
   }
 };
 
 const app = express();
-
 app.use(express.json());
 
-// OAuth Protected Resource Metadata
-app.get(
-  "/.well-known/oauth-protected-resource",
-  (req, res) => {
-    console.log(
-      "Serving oauth-protected-resource metadata"
+app.get("/.well-known/oauth-protected-resource", (req, res) => {
+  res.json({
+    resource: MCP_SERVER_URL,
+    authorization_servers: [AUTHKIT_DOMAIN],
+    bearer_methods_supported: ["header"],
+  });
+});
+
+app.get("/.well-known/oauth-authorization-server", async (req, res) => {
+  try {
+    const response = await fetch(
+      `${AUTHKIT_DOMAIN}/.well-known/oauth-authorization-server`
     );
-
-    res.json({
-      resource: MCP_SERVER_URL,
-
-      authorization_servers: [
-        AUTHKIT_DOMAIN,
-      ],
-
-      bearer_methods_supported: [
-        "header",
-      ],
-    });
+    const metadata = await response.json();
+    res.json(metadata);
+  } catch (err) {
+    console.error("Error al obtener metadatos de AuthKit:", err.message);
+    res.status(502).json({ error: "No se pudo obtener los metadatos del authorization server." });
   }
-);
-
-// OAuth Authorization Server Metadata
-app.get(
-  "/.well-known/oauth-authorization-server",
-  async (req, res) => {
-    try {
-      console.log(
-        "Fetching OAuth Authorization Server metadata..."
-      );
-
-      const response = await fetch(
-        `${AUTHKIT_DOMAIN}/.well-known/oauth-authorization-server`
-      );
-
-      const metadata =
-        await response.json();
-
-      console.log(
-        "OAuth metadata:",
-        metadata
-      );
-
-      res.json(metadata);
-    } catch (err) {
-      console.error(
-        "Error al obtener metadatos de AuthKit:",
-        err.message
-      );
-
-      res.status(502).json({
-        error:
-          "No se pudo obtener los metadatos del authorization server.",
-      });
-    }
-  }
-);
+});
 
 function createMcpServer() {
   const server = new Server(
-    {
-      name: "postgres-mcp",
-      version: "1.0.0",
-    },
-    {
-      capabilities: {
-        tools: {},
-      },
-    }
+    { name: "postgres-mcp", version: "1.0.0" },
+    { capabilities: { tools: {} } }
   );
 
-  server.setRequestHandler(
-    ListToolsRequestSchema,
-    async () => {
-      console.log(
-        "📦 ListToolsRequest recibido"
-      );
-
-      return {
-        tools: [
-          {
-            name:
-              executeQueryTool.name,
-
-            description:
-              "Ejecuta consultas SQL SELECT en PostgreSQL",
-
-            inputSchema: {
-              type: "object",
-
-              properties: {
-                query: {
-                  type: "string",
-                },
-              },
-
-              required: ["query"],
+  server.setRequestHandler(ListToolsRequestSchema, async () => {
+    return {
+      tools: [
+        {
+          name: executeQueryTool.name,
+          description: "Ejecuta consultas SQL SELECT en PostgreSQL",
+          inputSchema: {
+            type: "object",
+            properties: {
+              query: { type: "string" },
             },
+            required: ["query"],
           },
-        ],
-      };
+        },
+      ],
+    };
+  });
+
+  server.setRequestHandler(CallToolRequestSchema, async (request) => {
+    if (request.params.name === executeQueryTool.name) {
+      return await executeQueryTool.handler(request.params.arguments);
     }
-  );
-
-  server.setRequestHandler(
-    CallToolRequestSchema,
-    async (request) => {
-      console.log(
-        "🛠️ CallToolRequest recibido:",
-        request
-      );
-
-      if (
-        request.params.name ===
-        executeQueryTool.name
-      ) {
-        return await executeQueryTool.handler(
-          request.params.arguments
-        );
-      }
-
-      throw new Error(
-        "Tool no encontrada"
-      );
-    }
-  );
+    throw new Error("Tool no encontrada");
+  });
 
   return server;
 }
 
-app.post(
-  "/mcp",
-  bearerTokenMiddleware,
-  async (req, res) => {
-    try {
-      console.log(
-        "🚀 MCP endpoint hit"
-      );
+app.post("/mcp", bearerTokenMiddleware, async (req, res) => {
+  const transport = new StreamableHTTPServerTransport({
+    sessionIdGenerator: undefined, // stateless
+  });
 
-      const transport =
-        new StreamableHTTPServerTransport({
-          sessionIdGenerator:
-            undefined,
-        });
+  const server = createMcpServer();
 
-      const server =
-        createMcpServer();
+  await server.connect(transport);
+  await transport.handleRequest(req, res, req.body);
+});
 
-      await server.connect(
-        transport
-      );
-
-      console.log(
-        "✅ MCP server connected to transport"
-      );
-
-      await transport.handleRequest(
-        req,
-        res,
-        req.body
-      );
-
-      console.log(
-        "✅ MCP request handled successfully"
-      );
-    } catch (err) {
-      console.error(
-        "❌ Error en /mcp:",
-        err
-      );
-
-      if (!res.headersSent) {
-        res.status(500).json({
-          error:
-            "Internal MCP server error",
-        });
-      }
-    }
-  }
-);
-
-const PORT =
-  process.env.PORT || 3000;
-
+const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(
-    `MCP server corriendo en http://localhost:${PORT}/mcp`
-  );
-
-  console.log(
-    "AUTHKIT_DOMAIN:",
-    AUTHKIT_DOMAIN
-  );
-
-  console.log(
-    "MCP_SERVER_URL:",
-    MCP_SERVER_URL
-  );
-
-  console.log(
-    "WORKOS_CLIENT_ID:",
-    WORKOS_CLIENT_ID
-  );
-
-  console.log(
-    "DISABLE_AUTH:",
-    DISABLE_AUTH
-  );
+  console.log(`MCP server corriendo en http://localhost:${PORT}/mcp`);
+  console.log(`AuthKit domain: ${AUTHKIT_DOMAIN}`);
+  console.log(`MCP resource URL: ${MCP_SERVER_URL}`);
 });
