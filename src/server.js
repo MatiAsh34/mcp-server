@@ -15,8 +15,14 @@ import {
 
 import { executeQueryTool } from "./tools/executeQuery.js";
 
-const AUTHKIT_DOMAIN = process.env.WORKOS_AUTHKIT_DOMAIN;
-const MCP_SERVER_URL = process.env.MCP_SERVER_URL;
+const AUTHKIT_DOMAIN =
+  process.env.WORKOS_AUTHKIT_DOMAIN;
+
+const MCP_SERVER_URL =
+  process.env.MCP_SERVER_URL;
+
+const WORKOS_CLIENT_ID =
+  process.env.WORKOS_CLIENT_ID;
 
 const DISABLE_AUTH =
   process.env.DISABLE_AUTH === "true";
@@ -28,7 +34,7 @@ const JWKS = createRemoteJWKSet(
 const WWW_AUTHENTICATE_HEADER =
   `Bearer resource_metadata="${MCP_SERVER_URL}/.well-known/oauth-protected-resource"`;
 
-// Métodos MCP que Claude espera poder usar SIN auth
+// Métodos MCP permitidos SIN auth
 const UNAUTHENTICATED_METHODS = new Set([
   "initialize",
   "notifications/initialized",
@@ -68,7 +74,7 @@ const bearerTokenMiddleware = async (
 
   const method = req.body?.method;
 
-  // Claude espera initialize/tools/list/etc sin auth
+  // Claude necesita estos métodos sin auth
   if (UNAUTHENTICATED_METHODS.has(method)) {
     console.log(
       `⚠️ Allowing ${method} without auth`
@@ -77,7 +83,7 @@ const bearerTokenMiddleware = async (
     return next();
   }
 
-  // SOLO proteger tools privadas
+  // Solo proteger tools privadas
   if (!isProtectedToolCall(req.body)) {
     console.log(
       "⚠️ Non-protected MCP method allowed"
@@ -90,7 +96,7 @@ const bearerTokenMiddleware = async (
     req.headers.authorization
       ?.match(/^Bearer (.+)$/)?.[1];
 
-  // BYPASS TEMPORAL PARA DEBUG
+  // BYPASS TEMPORAL DEBUG
   if (DISABLE_AUTH) {
     console.log(
       "⚠️ AUTH BYPASS ENABLED ⚠️"
@@ -142,13 +148,21 @@ const bearerTokenMiddleware = async (
   try {
     console.log("🔍 Verificando JWT...");
 
-    const { payload } = await jwtVerify(token, JWKS, {
-      issuer: AUTHKIT_DOMAIN,
-      audience: process.env.WORKOS_CLIENT_ID,
-    });
+    const { payload } = await jwtVerify(
+      token,
+      JWKS,
+      {
+        issuer: AUTHKIT_DOMAIN,
+        audience: WORKOS_CLIENT_ID,
+      }
+    );
 
     console.log("✅ JWT válido");
-    console.log("JWT Payload:", payload);
+
+    console.log(
+      "JWT Payload:",
+      payload
+    );
 
     req.auth = payload;
 
@@ -176,7 +190,7 @@ const app = express();
 
 app.use(express.json());
 
-// Protected Resource Metadata
+// OAuth Protected Resource Metadata
 app.get(
   "/.well-known/oauth-protected-resource",
   (req, res) => {
@@ -186,9 +200,11 @@ app.get(
 
     res.json({
       resource: MCP_SERVER_URL,
+
       authorization_servers: [
         AUTHKIT_DOMAIN,
       ],
+
       bearer_methods_supported: [
         "header",
       ],
@@ -196,7 +212,7 @@ app.get(
   }
 );
 
-// OAuth Authorization Server Metadata proxy
+// OAuth Authorization Server Metadata
 app.get(
   "/.well-known/oauth-authorization-server",
   async (req, res) => {
@@ -371,6 +387,11 @@ app.listen(PORT, () => {
   console.log(
     "MCP_SERVER_URL:",
     MCP_SERVER_URL
+  );
+
+  console.log(
+    "WORKOS_CLIENT_ID:",
+    WORKOS_CLIENT_ID
   );
 
   console.log(
