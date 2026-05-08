@@ -37,7 +37,7 @@ const bearerTokenMiddleware = async (req, res, next) => {
   try {
     const { payload } = await jwtVerify(token, JWKS, {
       issuer: AUTHKIT_DOMAIN,
-      // audience: MCP_SERVER_URL,  // comentá esto por ahora
+      audience: process.env.WORKOS_CLIENT_ID,
     });
     console.log("JWT payload:", JSON.stringify(payload));
     next();
