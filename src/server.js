@@ -14,6 +14,7 @@ import { executeQueryTool } from "./tools/executeQuery.js";
 
 const AUTHKIT_DOMAIN = process.env.WORKOS_AUTHKIT_DOMAIN;
 const MCP_SERVER_URL = process.env.MCP_SERVER_URL;
+const WORKOS_CLIENT_ID = process.env.WORKOS_CLIENT_ID
 
 const JWKS = createRemoteJWKSet(new URL(`${AUTHKIT_DOMAIN}/oauth2/jwks`));
 
@@ -35,9 +36,6 @@ const bearerTokenMiddleware = async (req, res, next) => {
   }
   
   try {
-    const tokenParts = token.split('.');
-    const tokenPayload = JSON.parse(Buffer.from(tokenParts[1], 'base64url').toString());
-    console.log("Token aud:", tokenPayload.aud);
     const { payload } = await jwtVerify(token, JWKS, {
       issuer: AUTHKIT_DOMAIN,
       audience: process.env.WORKOS_CLIENT_ID,
