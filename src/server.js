@@ -34,6 +34,7 @@ const bearerTokenMiddleware = async (req, res, next) => {
       .json({ error: "No se proporcionó token de autorización." });
   }
   
+
   try {
     const { payload } = await jwtVerify(token, JWKS, {
       issuer: AUTHKIT_DOMAIN,
