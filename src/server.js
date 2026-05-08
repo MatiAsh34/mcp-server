@@ -24,11 +24,18 @@ const WWW_AUTHENTICATE_HEADER =
   `Bearer resource_metadata="${MCP_SERVER_URL}/.well-known/oauth-protected-resource"`;
 
 const bearerTokenMiddleware = async (req, res, next) => {
-  console.log("\n================ MCP REQUEST ================");
+  console.log("================ MCP REQUEST ================");
   console.log("Method:", req.method);
   console.log("URL:", req.originalUrl);
   console.log("Headers:", req.headers);
   console.log("Body:", req.body);
+
+  // Claude primero hace initialize SIN Bearer token
+  // Esto es normal y debe permitirse.
+  if (req.body?.method === "initialize") {
+    console.log("⚠️ Allowing initialize without auth");
+    return next();
+  }
 
   const token = req.headers.authorization
     ?.match(/^Bearer (.+)$/)?.[1];
@@ -90,6 +97,7 @@ const bearerTokenMiddleware = async (req, res, next) => {
 const app = express();
 app.use(express.json());
 
+// Protected Resource Metadata
 app.get("/.well-known/oauth-protected-resource", (req, res) => {
   console.log("Serving oauth-protected-resource metadata");
 
@@ -100,6 +108,7 @@ app.get("/.well-known/oauth-protected-resource", (req, res) => {
   });
 });
 
+// OAuth Authorization Server Metadata proxy
 app.get("/.well-known/oauth-authorization-server", async (req, res) => {
   try {
     console.log("Fetching OAuth Authorization Server metadata...");
@@ -114,18 +123,29 @@ app.get("/.well-known/oauth-authorization-server", async (req, res) => {
 
     res.json(metadata);
   } catch (err) {
-    console.error("Error al obtener metadatos de AuthKit:", err.message);
+    console.error(
+      "Error al obtener metadatos de AuthKit:",
+      err.message
+    );
 
     res.status(502).json({
-      error: "No se pudo obtener los metadatos del authorization server.",
+      error:
+        "No se pudo obtener los metadatos del authorization server.",
     });
   }
 });
 
 function createMcpServer() {
   const server = new Server(
-    { name: "postgres-mcp", version: "1.0.0" },
-    { capabilities: { tools: {} } }
+    {
+      name: "postgres-mcp",
+      version: "1.0.0",
+    },
+    {
+      capabilities: {
+        tools: {},
+      },
+    }
   );
 
   server.setRequestHandler(ListToolsRequestSchema, async () => {
@@ -139,7 +159,9 @@ function createMcpServer() {
           inputSchema: {
             type: "object",
             properties: {
-              query: { type: "string" },
+              query: {
+                type: "string",
+              },
             },
             required: ["query"],
           },
@@ -152,7 +174,9 @@ function createMcpServer() {
     console.log("🛠️ CallToolRequest recibido:", request);
 
     if (request.params.name === executeQueryTool.name) {
-      return await executeQueryTool.handler(request.params.arguments);
+      return await executeQueryTool.handler(
+        request.params.arguments
+      );
     }
 
     throw new Error("Tool no encontrada");
@@ -192,7 +216,10 @@ app.post("/mcp", bearerTokenMiddleware, async (req, res) => {
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
-  console.log(`MCP server corriendo en http://localhost:${PORT}/mcp`);
+  console.log(
+    `MCP server corriendo en http://localhost:${PORT}/mcp`
+  );
+
   console.log("AUTHKIT_DOMAIN:", AUTHKIT_DOMAIN);
   console.log("MCP_SERVER_URL:", MCP_SERVER_URL);
   console.log("DISABLE_AUTH:", DISABLE_AUTH);
