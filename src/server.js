@@ -32,8 +32,16 @@ const bearerTokenMiddleware = async (req, res, next) => {
 
   // Claude primero hace initialize SIN Bearer token
   // Esto es normal y debe permitirse.
-  if (req.body?.method === "initialize") {
-    console.log("⚠️ Allowing initialize without auth");
+  const unauthenticatedMethods = [
+    "initialize",
+    "notifications/initialized",
+  ];
+
+  if (unauthenticatedMethods.includes(req.body?.method)) {
+    console.log(
+      `⚠️ Allowing ${req.body.method} without auth`
+    );
+
     return next();
   }
 
