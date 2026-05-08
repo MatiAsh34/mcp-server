@@ -12,9 +12,6 @@ import {
 
 import { executeQueryTool } from "./tools/executeQuery.js";
 
-// ─── Config ────────────────────────────────────────────────────────────────────
-// WORKOS_AUTHKIT_DOMAIN  → e.g. "https://your-subdomain.authkit.app"
-// MCP_SERVER_URL         → e.g. "https://mcp.example.com"  (public URL de este server)
 const AUTHKIT_DOMAIN = process.env.WORKOS_AUTHKIT_DOMAIN;
 const MCP_SERVER_URL = process.env.MCP_SERVER_URL;
 
@@ -24,17 +21,14 @@ if (!AUTHKIT_DOMAIN || !MCP_SERVER_URL) {
   );
 }
 
-// JWKS remoto de AuthKit — se cachea automáticamente por `jose`
 const JWKS = createRemoteJWKSet(new URL(`${AUTHKIT_DOMAIN}/oauth2/jwks`));
 
-// Header WWW-Authenticate que indica al cliente MCP dónde encontrar los metadatos
 const WWW_AUTHENTICATE_HEADER = [
   'Bearer error="unauthorized"',
   'error_description="Se requiere autorización"',
   `resource_metadata="${MCP_SERVER_URL}/.well-known/oauth-protected-resource"`,
 ].join(", ");
 
-// ─── Middleware de autenticación Bearer ────────────────────────────────────────
 const bearerTokenMiddleware = async (req, res, next) => {
   const token = req.headers.authorization?.match(/^Bearer (.+)$/)?.[1];
 
