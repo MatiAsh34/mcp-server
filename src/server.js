@@ -61,26 +61,30 @@ app.use((req, res, next) => {
   next();
 });
 
-app.get("/.well-known/oauth-protected-resource", (req, res) => {
+const oauthProtectedResource = (req, res) => {
   res.json({
     resource: MCP_SERVER_URL,
     authorization_servers: [AUTHKIT_DOMAIN],
     bearer_methods_supported: ["header"],
   });
-});
+};
 
-app.get("/.well-known/oauth-authorization-server", async (req, res) => {
+const oauthAuthorizationServer = async (req, res) => {
   try {
-    const response = await fetch(
-      `${AUTHKIT_DOMAIN}/.well-known/oauth-authorization-server`
-    );
+    const response = await fetch(`${AUTHKIT_DOMAIN}/.well-known/oauth-authorization-server`);
     const metadata = await response.json();
     res.json(metadata);
   } catch (err) {
     console.error("Error al obtener metadatos de AuthKit:", err.message);
     res.status(502).json({ error: "No se pudo obtener los metadatos del authorization server." });
   }
-});
+};
+
+// Reemplaza los dos app.get anteriores con estos cuatro:
+app.get("/.well-known/oauth-protected-resource", oauthProtectedResource);
+app.get("/mcp/.well-known/oauth-protected-resource", oauthProtectedResource);
+app.get("/.well-known/oauth-authorization-server", oauthAuthorizationServer);
+app.get("/mcp/.well-known/oauth-authorization-server", oauthAuthorizationServer);
 
 function createMcpServer() {
   const server = new Server(
