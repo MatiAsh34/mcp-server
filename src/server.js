@@ -27,6 +27,7 @@ const bearerTokenMiddleware = async (req, res, next) => {
   const token = req.headers.authorization?.match(/^Bearer (.+)$/)?.[1];
 
   if (!token) {
+    console.error("Authorization header recibido:", req.headers.authorization);
     return res
       .set("WWW-Authenticate", WWW_AUTHENTICATE_HEADER)
       .status(401)
