@@ -18,9 +18,7 @@ const MCP_SERVER_URL = process.env.MCP_SERVER_URL;
 const JWKS = createRemoteJWKSet(new URL(`${AUTHKIT_DOMAIN}/oauth2/jwks`));
 
 const WWW_AUTHENTICATE_HEADER = [
-  'Bearer error="unauthorized"',
-  'error_description="Se requiere autorización"',
-  `resource_metadata="${MCP_SERVER_URL}/.well-known/oauth-protected-resource"`,
+  `Bearer resource_metadata="${MCP_SERVER_URL}/.well-known/oauth-protected-resource"`,
 ].join(", ");
 
 const bearerTokenMiddleware = async (req, res, next) => {
