@@ -38,9 +38,11 @@ const bearerTokenMiddleware = async (req, res, next) => {
   try {
     const { payload } = await jwtVerify(token, JWKS, {
       issuer: AUTHKIT_DOMAIN,
-      audience: process.env.WORKOS_CLIENT_ID,
+      // sin audience — WorkOS no lo popula por defecto
     });
-    console.log("JWT payload:", JSON.stringify(payload));
+
+    // Verificación manual opcional
+    console.log("JWT válido, sub:", payload.sub, "aud:", payload.aud);
     next();
   } catch (err) {
     console.error("JWT error:", err.code, err.message);
