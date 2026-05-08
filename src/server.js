@@ -38,10 +38,11 @@ const bearerTokenMiddleware = async (req, res, next) => {
       issuer: AUTHKIT_DOMAIN,
       audience: MCP_SERVER_URL, 
     });
-
+    console.log("JWT válido, audience:", payload.aud);
     next();
   } catch (err) {
-    console.error("Token inválido:", err.message);
+    console.error("JWT error:", err.code, err.message);
+    console.error("Token recibido:", token.substring(0, 50) + "...");
     return res
       .set("WWW-Authenticate", WWW_AUTHENTICATE_HEADER)
       .status(401)
