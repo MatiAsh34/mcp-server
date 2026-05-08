@@ -12,78 +12,81 @@ import {
 
 import { executeQueryTool } from "./tools/executeQuery.js";
 
-// ─── Config ────────────────────────────────────────────────────────────────────
-// WORKOS_AUTHKIT_DOMAIN  → e.g. "https://your-subdomain.authkit.app"
-// MCP_SERVER_URL         → e.g. "https://mcp.example.com"  (public URL de este server)
 const AUTHKIT_DOMAIN = process.env.WORKOS_AUTHKIT_DOMAIN;
 const MCP_SERVER_URL = process.env.MCP_SERVER_URL;
 
-if (!AUTHKIT_DOMAIN || !MCP_SERVER_URL) {
-  throw new Error(
-    "Faltan variables de entorno: WORKOS_AUTHKIT_DOMAIN y MCP_SERVER_URL son obligatorias."
-  );
-}
-
-// JWKS remoto de AuthKit — se cachea automáticamente por `jose`
 const JWKS = createRemoteJWKSet(new URL(`${AUTHKIT_DOMAIN}/oauth2/jwks`));
 
-// Header WWW-Authenticate que indica al cliente MCP dónde encontrar los metadatos
 const WWW_AUTHENTICATE_HEADER = [
   'Bearer error="unauthorized"',
   'error_description="Se requiere autorización"',
   `resource_metadata="${MCP_SERVER_URL}/.well-known/oauth-protected-resource"`,
 ].join(", ");
 
-// ─── Middleware de autenticación Bearer ────────────────────────────────────────
 const bearerTokenMiddleware = async (req, res, next) => {
   const token = req.headers.authorization?.match(/^Bearer (.+)$/)?.[1];
 
   if (!token) {
+    console.error("Authorization header recibido:", req.headers.authorization);
     return res
       .set("WWW-Authenticate", WWW_AUTHENTICATE_HEADER)
       .status(401)
       .json({ error: "No se proporcionó token de autorización." });
   }
-
+  
   try {
     const { payload } = await jwtVerify(token, JWKS, {
       issuer: AUTHKIT_DOMAIN,
-      audience: MCP_SERVER_URL,
+      audience: process.env.WORKOS_CLIENT_ID,
     });
-
+    console.log("JWT payload:", JSON.stringify(payload));
     next();
   } catch (err) {
-    console.error("Token inválido:", err.message);
+    console.error("JWT error:", err.code, err.message);
+    console.error("Token recibido:", token.substring(0, 50) + "...");
     return res
       .set("WWW-Authenticate", WWW_AUTHENTICATE_HEADER)
       .status(401)
       .json({ error: "Token Bearer inválido o expirado." });
   }
+  
 };
 
 const app = express();
 app.use(express.json());
 
-app.get("/.well-known/oauth-protected-resource", (req, res) => {
+app.use((req, res, next) => {
+  const start = Date.now();
+  res.on("finish", () => {
+    console.log(`${req.method.padEnd(6)} ${req.path.padEnd(45)} -> ${res.statusCode} (${Date.now() - start}ms)`);
+  });
+  next();
+});
+
+const oauthProtectedResource = (req, res) => {
   res.json({
     resource: MCP_SERVER_URL,
     authorization_servers: [AUTHKIT_DOMAIN],
     bearer_methods_supported: ["header"],
   });
-});
+};
 
-app.get("/.well-known/oauth-authorization-server", async (req, res) => {
+const oauthAuthorizationServer = async (req, res) => {
   try {
-    const response = await fetch(
-      `${AUTHKIT_DOMAIN}/.well-known/oauth-authorization-server`
-    );
+    const response = await fetch(`${AUTHKIT_DOMAIN}/.well-known/oauth-authorization-server`);
     const metadata = await response.json();
     res.json(metadata);
   } catch (err) {
     console.error("Error al obtener metadatos de AuthKit:", err.message);
     res.status(502).json({ error: "No se pudo obtener los metadatos del authorization server." });
   }
-});
+};
+
+// Reemplaza los dos app.get anteriores con estos cuatro:
+app.get("/.well-known/oauth-protected-resource", oauthProtectedResource);
+app.get("/mcp/.well-known/oauth-protected-resource", oauthProtectedResource);
+app.get("/.well-known/oauth-authorization-server", oauthAuthorizationServer);
+app.get("/mcp/.well-known/oauth-authorization-server", oauthAuthorizationServer);
 
 function createMcpServer() {
   const server = new Server(
@@ -119,20 +122,17 @@ function createMcpServer() {
   return server;
 }
 
-app.post("/mcp", bearerTokenMiddleware, async (req, res) => {
+app.post("/", bearerTokenMiddleware, async (req, res) => {
   const transport = new StreamableHTTPServerTransport({
-    sessionIdGenerator: undefined, // stateless
+    sessionIdGenerator: undefined,
   });
-
   const server = createMcpServer();
-
   await server.connect(transport);
   await transport.handleRequest(req, res, req.body);
 });
 
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`MCP server corriendo en http://localhost:${PORT}/mcp`);
-  console.log(`AuthKit domain: ${AUTHKIT_DOMAIN}`);
-  console.log(`MCP resource URL: ${MCP_SERVER_URL}`);
 });
