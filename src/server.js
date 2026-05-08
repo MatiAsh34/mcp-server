@@ -32,6 +32,7 @@ const bearerTokenMiddleware = async (req, res, next) => {
   }
   
   try {
+    next();
     const { payload } = await jwtVerify(token, JWKS, {
       issuer: AUTHKIT_DOMAIN,
       audience: MCP_SERVER_URL, 
