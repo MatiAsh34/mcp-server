@@ -142,14 +142,10 @@ const bearerTokenMiddleware = async (
   try {
     console.log("🔍 Verificando JWT...");
 
-    const { payload } = await jwtVerify(
-      token,
-      JWKS,
-      {
-        issuer: AUTHKIT_DOMAIN,
-        audience: MCP_SERVER_URL,
-      }
-    );
+    const { payload } = await jwtVerify(token, JWKS, {
+      issuer: AUTHKIT_DOMAIN,
+      audience: process.env.WORKOS_CLIENT_ID,
+    });
 
     console.log("✅ JWT válido");
     console.log("JWT Payload:", payload);
