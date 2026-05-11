@@ -15,7 +15,7 @@ import { executeQueryTool } from "./tools/executeQuery.js";
 //const AUTHKIT_DOMAIN = process.env.WORKOS_AUTHKIT_DOMAIN;
 //const MCP_SERVER_URL = process.env.MCP_SERVER_URL;
 
-const AUTHKIT_DOMAIN = 'seamless-ice-72-staging.authkit.app';
+const AUTHKIT_DOMAIN = 'https://seamless-ice-72-staging.authkit.app';
 const MCP_SERVER_URL = 'https://mcp-server-rga9.onrender.com';
 
 const JWKS = createRemoteJWKSet(new URL(`${AUTHKIT_DOMAIN}/oauth2/jwks`));
