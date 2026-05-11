@@ -41,7 +41,7 @@ const bearerTokenMiddleware = async (req, res, next) => {
     console.log("Token aud:", tokenPayload.aud);
     const { payload } = await jwtVerify(token, JWKS, {
       issuer: AUTHKIT_DOMAIN,
-      audience: MCP_SERVER_URL,
+      audience: "https://mcp-server-rga9.onrender.com",
     });
     console.log("JWT payload:", JSON.stringify(payload));
     next();
