@@ -129,16 +129,6 @@ function createMcpServer() {
   return server;
 }
 
-app.post("/mcp", bearerTokenMiddleware, async (req, res) => {
-  const transport = new StreamableHTTPServerTransport({
-    sessionIdGenerator: undefined,
-  });
-  const server = createMcpServer();
-  await server.connect(transport);
-  await transport.handleRequest(req, res, req.body);
-});
-
-
 app.post("/", bearerTokenMiddleware, async (req, res) => {
   const transport = new StreamableHTTPServerTransport({
     sessionIdGenerator: undefined,
