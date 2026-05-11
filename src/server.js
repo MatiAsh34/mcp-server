@@ -12,8 +12,11 @@ import {
 
 import { executeQueryTool } from "./tools/executeQuery.js";
 
-const AUTHKIT_DOMAIN = process.env.WORKOS_AUTHKIT_DOMAIN;
-const MCP_SERVER_URL = process.env.MCP_SERVER_URL;
+//const AUTHKIT_DOMAIN = process.env.WORKOS_AUTHKIT_DOMAIN;
+//const MCP_SERVER_URL = process.env.MCP_SERVER_URL;
+
+const AUTHKIT_DOMAIN = "seamless-ice-72-staging.authkit.app"
+const MCP_SERVER_URL = "https://mcp-server-rga9.onrender.com"
 
 const JWKS = createRemoteJWKSet(new URL(`${AUTHKIT_DOMAIN}/oauth2/jwks`));
 
@@ -41,7 +44,7 @@ const bearerTokenMiddleware = async (req, res, next) => {
     console.log("Token aud:", tokenPayload.aud);
     const { payload } = await jwtVerify(token, JWKS, {
       issuer: AUTHKIT_DOMAIN,
-      audience: "https://mcp-server-rga9.onrender.com",
+      audience: MCP_SERVER_URL,
     });
     console.log("JWT payload:", JSON.stringify(payload));
     next();
