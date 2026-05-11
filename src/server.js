@@ -36,6 +36,9 @@ const bearerTokenMiddleware = async (req, res, next) => {
   
 
   try {
+    const tokenParts = token.split('.');
+    const tokenPayload = JSON.parse(Buffer.from(tokenParts[1], 'base64url').toString());
+    console.log("Token aud:", tokenPayload.aud);
     const { payload } = await jwtVerify(token, JWKS, {
       issuer: AUTHKIT_DOMAIN,
       audience: MCP_SERVER_URL,
