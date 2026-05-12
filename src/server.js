@@ -72,30 +72,13 @@ app.get("/.well-known/oauth-protected-resource", (req, res) => {
   res.json(response);
 });
 
-app.get('/.well-known/oauth-authorization-server-old', async (req, res) => {
-  console.log(">>> HIT: oauth-authorization-server");
-
-  const response = {
-    issuer: `https://${AUTHKIT_DOMAIN}`,
-    authorization_endpoint: `https://${AUTHKIT_DOMAIN}/oauth2/authorize`,
-    token_endpoint: `https://${AUTHKIT_DOMAIN}/oauth2/token`,
-    jwks_uri: `https://${AUTHKIT_DOMAIN}/oauth2/jwks`,
-    response_types_supported: ["code"],
-    grant_types_supported: [
-      "authorization_code",
-      "refresh_token",
-    ],
-    token_endpoint_auth_methods_supported: ["none"],
-    code_challenge_methods_supported: ["S256"],
-    scopes_supported: ["openid", "profile", "email"],
-  };
-
-  console.log(
-    "oauth-authorization-server RESPONSE:",
-    JSON.stringify(response, null, 2)
+app.get('/.well-known/oauth-authorization-server/mcp', async (req, res) => {
+  const response = await fetch(
+    'https://seamless-ice-72-staging.authkit.app/.well-known/oauth-authorization-server',
   );
+  const metadata = await response.json();
 
-  res.json(response);
+  res.json(metadata);
 });
 
 app.get('/.well-known/oauth-authorization-server', async (req, res) => {
