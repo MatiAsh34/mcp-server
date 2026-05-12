@@ -28,7 +28,7 @@ const JWKS = createRemoteJWKSet(
 );
 
 const WWW_AUTHENTICATE_HEADER =
-  `Bearer resource_metadata="${MCP_SERVER_URL}/.well-known/oauth-protected-resource"`;
+  `Bearer realm="mcp", resource="${MCP_SERVER_URL}"`;
 
 // --- Express App ---
 const app = express();
