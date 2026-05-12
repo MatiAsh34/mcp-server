@@ -55,6 +55,23 @@ app.use((req, res, next) => {
 
 // --- Metadata Endpoints ---
 
+app.get("/.well-known/oauth-protected-resource/mcp", (req, res) => {
+  console.log(">>> HIT: oauth-protected-resource");
+
+  const response = {
+    resource: MCP_SERVER_URL,
+    authorization_servers: [`https://${AUTHKIT_DOMAIN}`],
+    bearer_methods_supported: ["header"],
+  };
+
+  console.log(
+    "oauth-protected-resource RESPONSE:",
+    JSON.stringify(response, null, 2)
+  );
+
+  res.json(response);
+});
+
 app.get("/.well-known/oauth-protected-resource", (req, res) => {
   console.log(">>> HIT: oauth-protected-resource");
 
@@ -72,14 +89,6 @@ app.get("/.well-known/oauth-protected-resource", (req, res) => {
   res.json(response);
 });
 
-app.get('/.well-known/oauth-authorization-server/mcp', async (req, res) => {
-  const response = await fetch(
-    'https://seamless-ice-72-staging.authkit.app/.well-known/oauth-authorization-server',
-  );
-  const metadata = await response.json();
-
-  res.json(metadata);
-});
 
 app.get('/.well-known/oauth-authorization-server', async (req, res) => {
   const response = await fetch(
