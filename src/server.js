@@ -42,16 +42,21 @@ app.get("/.well-known/oauth-protected-resource", (req, res) => {
 
 // Proxy de metadata OAuth Authorization Server de AuthKit
 // Algunos clientes MCP buscan este endpoint directamente en tu dominio
-app.get("/.well-known/oauth-authorization-server", async (req, res) => {
-  try {
-    const response = await fetch(
-      `https://${AUTHKIT_DOMAIN}/.well-known/oauth-authorization-server`
-    );
-    const metadata = await response.json();
-    res.json(metadata);
-  } catch (err) {
-    res.status(502).json({ error: "Failed to fetch authorization server metadata" });
-  }
+app.get("/.well-known/oauth-authorization-server", (req, res) => {
+  res.json({
+    issuer: `https://${AUTHKIT_DOMAIN}`,
+    authorization_endpoint: `https://${AUTHKIT_DOMAIN}/oauth2/authorize`,
+    token_endpoint: `https://${AUTHKIT_DOMAIN}/oauth2/token`,
+    jwks_uri: `https://${AUTHKIT_DOMAIN}/oauth2/jwks`,
+    response_types_supported: ["code"],
+    grant_types_supported: [
+      "authorization_code",
+      "refresh_token"
+    ],
+    token_endpoint_auth_methods_supported: ["none"],
+    code_challenge_methods_supported: ["S256"],
+    scopes_supported: ["openid", "profile", "email"],
+  });
 });
 
 // --- Middleware Bearer Token ---
