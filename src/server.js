@@ -21,11 +21,8 @@ const JWKS = createRemoteJWKSet(
   new URL(`https://${AUTHKIT_DOMAIN}/oauth2/jwks`)
 );
 
-const WWW_AUTHENTICATE_HEADER = [
-  'Bearer error="unauthorized"',
-  'error_description="Authorization needed"',
-  `resource_metadata="${MCP_SERVER_URL}/.well-known/oauth-protected-resource"`,
-].join(", ");
+const WWW_AUTHENTICATE_HEADER =
+  `Bearer resource_metadata="${MCP_SERVER_URL}/.well-known/oauth-protected-resource"`;
 
 // --- Express App ---
 const app = express();
