@@ -27,8 +27,15 @@ const JWKS = createRemoteJWKSet(
   new URL(`https://${AUTHKIT_DOMAIN}/oauth2/jwks`)
 );
 
-const WWW_AUTHENTICATE_HEADER =
-  `Bearer realm="mcp", resource="${MCP_SERVER_URL}"`;
+const MCP_RESOURCE_URL = "https://mcp-server-rga9.onrender.com/mcp";
+const MCP_RESOURCE_METADATA_URL =
+  "https://mcp-server-rga9.onrender.com/.well-known/oauth-protected-resource/mcp";
+
+const WWW_AUTHENTICATE_HEADER = [
+  'Bearer error="unauthorized"',
+  'error_description="Authorization needed"',
+  `resource_metadata="${MCP_RESOURCE_METADATA_URL}"`,
+].join(', ');
 
 // --- Express App ---
 const app = express();
