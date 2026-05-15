@@ -80,6 +80,42 @@ function checkAllowedDomain(email) {
   return { allowed: true, domain };
 }
 
+async function isUserAllowed(userId, email) {
+  const userDomain = email?.split("@")[1];
+
+  try {
+    // Regla 1: dominio verificado en la organización de WorkOS
+    const organization = await workos.organizations.getOrganization(
+      process.env.WORKOS_ALLOWED_ORG_ID
+    );
+
+    const orgDomains = organization.domains.map((d) => d.domain);
+    console.log("Dominios de la org:", orgDomains);
+
+    if (orgDomains.includes(userDomain)) {
+      console.log(`Acceso por dominio: ${userDomain}`);
+      return true;
+    }
+
+    // Regla 2: miembro directo de la organización
+    const memberships = await workos.userManagement.listOrganizationMemberships({
+      userId,
+      organizationId: process.env.WORKOS_ALLOWED_ORG_ID,
+      statuses: ["active"],
+    });
+
+    if (memberships.data.length > 0) {
+      console.log(`Acceso por membresía WorkOS: ${email}`);
+      return true;
+    }
+  } catch (err) {
+    console.error("Error verificando acceso:", err.message);
+  }
+
+  return false;
+}
+
+
 async function bearerTokenMiddleware(req, res, next) {
   const authHeader = req.headers.authorization;
   const token = authHeader?.match(/^Bearer (.+)$/)?.[1];
@@ -95,7 +131,7 @@ async function bearerTokenMiddleware(req, res, next) {
     const { payload } = await jwtVerify(token, JWKS, {
       issuer: `https://${AUTHKIT_DOMAIN}`,
     });
-
+    
     const email = await getEmailFromUserId(payload.sub);
 
     if (!email) {
@@ -104,7 +140,7 @@ async function bearerTokenMiddleware(req, res, next) {
         .status(401)
         .json({ error: "No se pudo obtener el email del usuario." });
     }
-
+    /*
     const { allowed, domain } = checkAllowedDomain(email);
 
     if (!allowed) {
@@ -113,10 +149,16 @@ async function bearerTokenMiddleware(req, res, next) {
         .status(403)
         .json({ error: `Dominio no autorizado: ${domain}` });
     }
+    */
 
-    req.userId = payload.sub;
-    req.userEmail = email;
-
+    const allowed = await isUserAllowed(payload.sub, email);
+    if (!allowed) {
+      return res
+        .set("WWW-Authenticate", WWW_AUTHENTICATE_HEADER)
+        .status(403)
+        .json({ error: "Usuario no autorizado." });
+    }
+    
     next();
   } catch (err) {
     return res
