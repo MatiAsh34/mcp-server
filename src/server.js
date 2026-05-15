@@ -83,6 +83,8 @@ async function bearerTokenMiddleware(req, res, next) {
       issuer: `https://${AUTHKIT_DOMAIN}`,
     });
 
+    console.log("JWT payload:", JSON.stringify(payload, null, 2)); // 👈 agregá esto
+
     //llamada a verificacion de dominio
     const { allowed, domain } = checkAllowedDomain(payload.email);
     if (!allowed) {
