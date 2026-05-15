@@ -67,6 +67,17 @@ function checkAllowedDomain(email) {
   return { allowed: true, domain };
 }
 
+async function getEmailFromToken(token) {
+  const response = await fetch(`https://${AUTHKIT_DOMAIN}/oauth2/userinfo`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  if (!response.ok) return null;
+
+  const data = await response.json();
+  return data.email;
+}
+
 async function bearerTokenMiddleware(req, res, next) {
   const authHeader = req.headers.authorization;
   const token = authHeader?.match(/^Bearer (.+)$/)?.[1];
@@ -83,16 +94,24 @@ async function bearerTokenMiddleware(req, res, next) {
       issuer: `https://${AUTHKIT_DOMAIN}`,
     });
 
-    console.log("JWT payload:", JSON.stringify(payload, null, 2)); // 👈 agregá esto
+    const email = await getEmailFromToken(token);
+    if (!email) {
+      return res
+        .set("WWW-Authenticate", WWW_AUTHENTICATE_HEADER)
+        .status(401)
+        .json({ error: "No se pudo obtener el email del usuario." });
+    }
 
-    //llamada a verificacion de dominio
-    const { allowed, domain } = checkAllowedDomain(payload.email);
+    const { allowed, domain } = checkAllowedDomain(email);
     if (!allowed) {
       return res
         .set("WWW-Authenticate", WWW_AUTHENTICATE_HEADER)
         .status(403)
         .json({ error: `Dominio no autorizado: ${domain}` });
     }
+
+    req.userId = payload.sub;
+    req.userEmail = email;
 
     next();
   } catch (err) {
