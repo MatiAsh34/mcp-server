@@ -59,6 +59,16 @@ app.get('/.well-known/oauth-authorization-server', async (req, res) => {
   res.json(metadata);
 });
 
+async function getEmailFromUserId(userId) {
+  try {
+    const user = await workos.userManagement.getUser(userId);
+    return user.email;
+  } catch (err) {
+    console.error("Error obteniendo usuario de WorkOS:", err.message);
+    return null;
+  }
+}
+
 function checkAllowedDomain(email) {
   const domain = email?.split("@")[1];
   const ALLOWED_DOMAINS = (process.env.ALLOWED_DOMAINS || "").split(",");
@@ -68,17 +78,6 @@ function checkAllowedDomain(email) {
   }
 
   return { allowed: true, domain };
-}
-
-async function getEmailFromUserId(userId) {
-  try {
-    const user = await workos.userManagement.getUser(userId);
-    console.log("WorkOS user email:", user.email); // temporal
-    return user.email;
-  } catch (err) {
-    console.error("Error obteniendo usuario de WorkOS:", err.message);
-    return null;
-  }
 }
 
 async function bearerTokenMiddleware(req, res, next) {
@@ -97,11 +96,7 @@ async function bearerTokenMiddleware(req, res, next) {
       issuer: `https://${AUTHKIT_DOMAIN}`,
     });
 
-    console.log("JWT ok, sub:", payload.sub);
-
     const email = await getEmailFromUserId(payload.sub);
-
-    console.log("email obtenido:", email);
 
     if (!email) {
       return res
@@ -111,8 +106,6 @@ async function bearerTokenMiddleware(req, res, next) {
     }
 
     const { allowed, domain } = checkAllowedDomain(email);
-
-    console.log("dominio:", domain, "| permitido:", allowed);
 
     if (!allowed) {
       return res
