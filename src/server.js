@@ -9,14 +9,16 @@ import {
   CallToolRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import { createRemoteJWKSet, jwtVerify } from "jose";
+import { WorkOS } from "@workos-inc/node";
 
 import { executeQueryTool } from "./tools/executeQuery.js";
 
-import { WorkOS } from "@workos-inc/node";
-const workos = new WorkOS(process.env.WORKOS_API_KEY);
-
 const AUTHKIT_DOMAIN = process.env.AUTHKIT_DOMAIN;
 const MCP_SERVER_URL = process.env.MCP_SERVER_URL;
+const WORKOS_API_KEY = process.env.WORKOS_API_KEY;
+const WORKOS_ORG_ID = process.env.WORKOS_ORG_ID;
+
+const workos = new WorkOS(WORKOS_API_KEY);
 
 const JWKS = createRemoteJWKSet(
   new URL(`https://${AUTHKIT_DOMAIN}/oauth2/jwks`)
@@ -51,85 +53,80 @@ app.get("/.well-known/oauth-protected-resource", (req, res) => {
 });
 
 app.get("/.well-known/oauth-authorization-server", async (req, res) => {
-  const response = await fetch(
-    "https://seamless-ice-72-staging.authkit.app/.well-known/oauth-authorization-server"
-  );
-  const metadata = await response.json();
-  res.json(metadata);
+  try {
+    const response = await fetch(
+      `https://${AUTHKIT_DOMAIN}/.well-known/oauth-authorization-server`
+    );
+
+    if (!response.ok) {
+      return res.status(502).json({
+        error: "Could not fetch OAuth authorization server metadata",
+      });
+    }
+
+    const metadata = await response.json();
+    res.json(metadata);
+  } catch (err) {
+    console.error("OAuth metadata error:", err);
+
+    res.status(500).json({
+      error: "Internal server error",
+    });
+  }
 });
 
-async function getEmailFromUserId(userId) {
-  try {
-    const user = await workos.userManagement.getUser(userId);
-    return user.email;
-  } catch (err) {
-    console.error("Error obteniendo usuario de WorkOS:", err.message);
+function extractDomainsFromOrganization(organization) {
+  const rawDomains =
+    organization.domainData ||
+    organization.domains ||
+    organization.verifiedDomains ||
+    [];
+
+  return rawDomains
+    .map((item) => {
+      if (typeof item === "string") {
+        return item;
+      }
+
+      return item.domain || item.name;
+    })
+    .filter(Boolean)
+    .map((domain) => domain.toLowerCase());
+}
+
+async function getAllowedOrganizationDomains() {
+  const organization = await workos.organizations.getOrganization(WORKOS_ORG_ID);
+
+  const domains = extractDomainsFromOrganization(organization);
+
+  if (!domains.length) {
+    throw new Error(
+      `Organization ${WORKOS_ORG_ID} does not have any configured domains`
+    );
+  }
+
+  return domains;
+}
+
+async function getWorkOSUserEmail(userId) {
+  const user = await workos.userManagement.getUser(userId);
+
+  if (!user?.email) {
     return null;
   }
+
+  return user.email.toLowerCase();
 }
 
-// FIX 2: auto-enrola al usuario en la org si aún no es miembro
-async function ensureOrgMembership(userId) {
-  try {
-    const existing = await workos.userManagement.listOrganizationMemberships({
-      userId,
-      organizationId: process.env.WORKOS_ALLOWED_ORG_ID,
-    });
+async function isUserActiveMemberOfOrganization(userId) {
+  const memberships = await workos.userManagement.listOrganizationMemberships({
+    organizationId: WORKOS_ORG_ID,
+    userId,
+    statuses: ["active"],
+    limit: 1,
+  });
 
-    if (existing.data.length === 0) {
-      await workos.userManagement.createOrganizationMembership({
-        userId,
-        organizationId: process.env.WORKOS_ALLOWED_ORG_ID,
-        roleSlug: "member",
-      });
-      console.log(`Membresía creada automáticamente para userId: ${userId}`);
-    }
-  } catch (err) {
-    // No es fatal: el acceso por dominio ya fue aprobado
-    console.warn("No se pudo crear membresía automática:", err.message);
-  }
-}
-
-async function isUserAllowed(userId, email) {
-  const userDomain = email?.split("@")[1];
-
-  try {
-    const organization = await workos.organizations.getOrganization(
-      process.env.WORKOS_ALLOWED_ORG_ID
-    );
-
-    // FIX 1: solo dominios con state "verified", ignorar pendientes
-    const orgDomains = organization.domains
-      .filter((d) => d.state === "verified")
-      .map((d) => d.domain);
-
-    console.log("Dominios verificados de la org:", orgDomains);
-
-    // Regla 1: dominio verificado → acceso + auto-enrolamiento
-    if (orgDomains.includes(userDomain)) {
-      console.log(`Acceso por dominio verificado: ${userDomain}`);
-      await ensureOrgMembership(userId); // FIX 2
-      return true;
-    }
-
-    // Regla 2: miembro directo activo de la organización
-    const memberships = await workos.userManagement.listOrganizationMemberships(
-      {
-        userId,
-        organizationId: process.env.WORKOS_ALLOWED_ORG_ID,
-        statuses: ["active"],
-      }
-    );
-
-    if (memberships.data.length > 0) {
-      console.log(`Acceso por membresía WorkOS: ${email}`);
-      return true;
-    }
-  } catch (err) {
-    console.error("Error verificando acceso:", err.message);
-  }
-
-  return false;
+  return memberships.data.length > 0;
 }
 
 async function bearerTokenMiddleware(req, res, next) {
@@ -148,41 +145,58 @@ async function bearerTokenMiddleware(req, res, next) {
       issuer: `https://${AUTHKIT_DOMAIN}`,
     });
 
-    // FIX 3: log del payload para detectar si sub tiene el formato correcto
-    console.log("JWT payload:", JSON.stringify(payload, null, 2));
-
-    // FIX 3: asegurar que sub sea el userId en formato user_XXXX
-    const userId = payload.sub?.startsWith("user_")
-      ? payload.sub
-      : (payload.sid ?? payload["workos_user_id"] ?? payload.sub);
+    const userId = payload.sub;
 
     if (!userId) {
-      return res
-        .set("WWW-Authenticate", WWW_AUTHENTICATE_HEADER)
-        .status(401)
-        .json({ error: "No se pudo extraer el userId del token." });
+      return res.status(403).json({
+        error: "Missing user id in bearer token.",
+      });
     }
 
-    const email = await getEmailFromUserId(userId);
+    const isActiveMember = await isUserActiveMemberOfOrganization(userId);
+
+    if (!isActiveMember) {
+      return res.status(403).json({
+        error: "User is not an active member of the allowed organization.",
+      });
+    }
+
+    const emailFromToken = payload.email
+      ? String(payload.email).toLowerCase()
+      : null;
+
+    const email = emailFromToken || (await getWorkOSUserEmail(userId));
 
     if (!email) {
-      return res
-        .set("WWW-Authenticate", WWW_AUTHENTICATE_HEADER)
-        .status(401)
-        .json({ error: "No se pudo obtener el email del usuario." });
+      return res.status(403).json({
+        error: "Could not resolve user email.",
+      });
     }
 
-    const allowed = await isUserAllowed(userId, email);
-    if (!allowed) {
-      return res
-        .set("WWW-Authenticate", WWW_AUTHENTICATE_HEADER)
-        .status(403)
-        .json({ error: "Usuario no autorizado." });
+    const emailDomain = email.split("@")[1]?.toLowerCase();
+
+    if (!emailDomain) {
+      return res.status(403).json({
+        error: "Invalid user email.",
+      });
     }
 
-    next();
+    const allowedDomains = await getAllowedOrganizationDomains();
+
+    if (!allowedDomains.includes(emailDomain)) {
+      return res.status(403).json({
+        error: "User email domain is not allowed for this organization.",
+      });
+    }
+
+    req.userId = userId;
+    req.userEmail = email;
+    req.organizationId = WORKOS_ORG_ID;
+
+    return next();
   } catch (err) {
-    console.error("Error verificando token:", err.message);
+    console.error("Auth error:", err);
+
     return res
       .set("WWW-Authenticate", WWW_AUTHENTICATE_HEADER)
       .status(401)
@@ -236,13 +250,19 @@ app.post("/mcp", bearerTokenMiddleware, async (req, res) => {
     await server.connect(transport);
     await transport.handleRequest(req, res, req.body);
   } catch (err) {
-    console.error("Error en /mcp:", err.message);
-    res.status(500).json({ error: "Internal server error" });
+    console.error("MCP error:", err);
+
+    res.status(500).json({
+      error: "Internal server error",
+    });
   }
 });
 
 app.get("/", (req, res) => {
-  res.json({ ok: true, service: "postgres-mcp" });
+  res.json({
+    ok: true,
+    service: "postgres-mcp",
+  });
 });
 
 const PORT = process.env.PORT || 3000;
