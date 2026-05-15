@@ -12,7 +12,7 @@ import { createRemoteJWKSet, jwtVerify } from "jose";
 
 import { executeQueryTool } from "./tools/executeQuery.js";
 
-const AUTHKIT_DOMAIN = process.env.WORKOS_AUTHKIT_DOMAIN;
+const AUTHKIT_DOMAIN = process.env.AUTHKIT_DOMAIN;
 const MCP_SERVER_URL = process.env.MCP_SERVER_URL;
 
 const JWKS = createRemoteJWKSet(
