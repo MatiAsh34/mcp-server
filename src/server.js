@@ -56,6 +56,17 @@ app.get('/.well-known/oauth-authorization-server', async (req, res) => {
   res.json(metadata);
 });
 
+function checkAllowedDomain(email) {
+  const domain = email?.split("@")[1];
+  const ALLOWED_DOMAINS = (process.env.ALLOWED_DOMAINS || "").split(",");
+
+  if (!domain || !ALLOWED_DOMAINS.includes(domain)) {
+    return { allowed: false, domain };
+  }
+
+  return { allowed: true, domain };
+}
+
 async function bearerTokenMiddleware(req, res, next) {
   const authHeader = req.headers.authorization;
   const token = authHeader?.match(/^Bearer (.+)$/)?.[1];
@@ -72,7 +83,14 @@ async function bearerTokenMiddleware(req, res, next) {
       issuer: `https://${AUTHKIT_DOMAIN}`,
     });
 
-    req.userId = payload.sub;
+    //llamada a verificacion de dominio
+    const { allowed, domain } = checkAllowedDomain(payload.email);
+    if (!allowed) {
+      return res
+        .set("WWW-Authenticate", WWW_AUTHENTICATE_HEADER)
+        .status(403)
+        .json({ error: `Dominio no autorizado: ${domain}` });
+    }
 
     next();
   } catch (err) {
