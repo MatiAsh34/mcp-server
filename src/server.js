@@ -28,7 +28,7 @@ const WWW_AUTHENTICATE_HEADER = [
   'Bearer error="unauthorized"',
   'error_description="Authorization needed"',
   `resource_metadata="${MCP_RESOURCE_METADATA_URL}"`,
-].join(', ');
+].join(", ");
 
 const app = express();
 
@@ -50,12 +50,11 @@ app.get("/.well-known/oauth-protected-resource", (req, res) => {
   });
 });
 
-app.get('/.well-known/oauth-authorization-server', async (req, res) => {
+app.get("/.well-known/oauth-authorization-server", async (req, res) => {
   const response = await fetch(
-    'https://seamless-ice-72-staging.authkit.app/.well-known/oauth-authorization-server',
+    "https://seamless-ice-72-staging.authkit.app/.well-known/oauth-authorization-server"
   );
   const metadata = await response.json();
-
   res.json(metadata);
 });
 
@@ -69,40 +68,58 @@ async function getEmailFromUserId(userId) {
   }
 }
 
-function checkAllowedDomain(email) {
-  const domain = email?.split("@")[1];
-  const ALLOWED_DOMAINS = (process.env.ALLOWED_DOMAINS || "").split(",");
+// FIX 2: auto-enrola al usuario en la org si aún no es miembro
+async function ensureOrgMembership(userId) {
+  try {
+    const existing = await workos.userManagement.listOrganizationMemberships({
+      userId,
+      organizationId: process.env.WORKOS_ALLOWED_ORG_ID,
+    });
 
-  if (!domain || !ALLOWED_DOMAINS.includes(domain)) {
-    return { allowed: false, domain };
+    if (existing.data.length === 0) {
+      await workos.userManagement.createOrganizationMembership({
+        userId,
+        organizationId: process.env.WORKOS_ALLOWED_ORG_ID,
+        roleSlug: "member",
+      });
+      console.log(`Membresía creada automáticamente para userId: ${userId}`);
+    }
+  } catch (err) {
+    // No es fatal: el acceso por dominio ya fue aprobado
+    console.warn("No se pudo crear membresía automática:", err.message);
   }
-
-  return { allowed: true, domain };
 }
 
 async function isUserAllowed(userId, email) {
   const userDomain = email?.split("@")[1];
 
   try {
-    // Regla 1: dominio verificado en la organización de WorkOS
     const organization = await workos.organizations.getOrganization(
       process.env.WORKOS_ALLOWED_ORG_ID
     );
 
-    const orgDomains = organization.domains.map((d) => d.domain);
-    console.log("Dominios de la org:", orgDomains);
+    // FIX 1: solo dominios con state "verified", ignorar pendientes
+    const orgDomains = organization.domains
+      .filter((d) => d.state === "verified")
+      .map((d) => d.domain);
 
+    console.log("Dominios verificados de la org:", orgDomains);
+
+    // Regla 1: dominio verificado → acceso + auto-enrolamiento
     if (orgDomains.includes(userDomain)) {
-      console.log(`Acceso por dominio: ${userDomain}`);
+      console.log(`Acceso por dominio verificado: ${userDomain}`);
+      await ensureOrgMembership(userId); // FIX 2
       return true;
     }
 
-    // Regla 2: miembro directo de la organización
-    const memberships = await workos.userManagement.listOrganizationMemberships({
-      userId,
-      organizationId: process.env.WORKOS_ALLOWED_ORG_ID,
-      statuses: ["active"],
-    });
+    // Regla 2: miembro directo activo de la organización
+    const memberships = await workos.userManagement.listOrganizationMemberships(
+      {
+        userId,
+        organizationId: process.env.WORKOS_ALLOWED_ORG_ID,
+        statuses: ["active"],
+      }
+    );
 
     if (memberships.data.length > 0) {
       console.log(`Acceso por membresía WorkOS: ${email}`);
@@ -114,7 +131,6 @@ async function isUserAllowed(userId, email) {
 
   return false;
 }
-
 
 async function bearerTokenMiddleware(req, res, next) {
   const authHeader = req.headers.authorization;
@@ -131,8 +147,23 @@ async function bearerTokenMiddleware(req, res, next) {
     const { payload } = await jwtVerify(token, JWKS, {
       issuer: `https://${AUTHKIT_DOMAIN}`,
     });
-    
-    const email = await getEmailFromUserId(payload.sub);
+
+    // FIX 3: log del payload para detectar si sub tiene el formato correcto
+    console.log("JWT payload:", JSON.stringify(payload, null, 2));
+
+    // FIX 3: asegurar que sub sea el userId en formato user_XXXX
+    const userId = payload.sub?.startsWith("user_")
+      ? payload.sub
+      : (payload.sid ?? payload["workos_user_id"] ?? payload.sub);
+
+    if (!userId) {
+      return res
+        .set("WWW-Authenticate", WWW_AUTHENTICATE_HEADER)
+        .status(401)
+        .json({ error: "No se pudo extraer el userId del token." });
+    }
+
+    const email = await getEmailFromUserId(userId);
 
     if (!email) {
       return res
@@ -140,27 +171,18 @@ async function bearerTokenMiddleware(req, res, next) {
         .status(401)
         .json({ error: "No se pudo obtener el email del usuario." });
     }
-    /*
-    const { allowed, domain } = checkAllowedDomain(email);
 
-    if (!allowed) {
-      return res
-        .set("WWW-Authenticate", WWW_AUTHENTICATE_HEADER)
-        .status(403)
-        .json({ error: `Dominio no autorizado: ${domain}` });
-    }
-    */
-
-    const allowed = await isUserAllowed(payload.sub, email);
+    const allowed = await isUserAllowed(userId, email);
     if (!allowed) {
       return res
         .set("WWW-Authenticate", WWW_AUTHENTICATE_HEADER)
         .status(403)
         .json({ error: "Usuario no autorizado." });
     }
-    
+
     next();
   } catch (err) {
+    console.error("Error verificando token:", err.message);
     return res
       .set("WWW-Authenticate", WWW_AUTHENTICATE_HEADER)
       .status(401)
@@ -214,6 +236,7 @@ app.post("/mcp", bearerTokenMiddleware, async (req, res) => {
     await server.connect(transport);
     await transport.handleRequest(req, res, req.body);
   } catch (err) {
+    console.error("Error en /mcp:", err.message);
     res.status(500).json({ error: "Internal server error" });
   }
 });
