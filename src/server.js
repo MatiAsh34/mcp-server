@@ -12,6 +12,9 @@ import { createRemoteJWKSet, jwtVerify } from "jose";
 
 import { executeQueryTool } from "./tools/executeQuery.js";
 
+import { WorkOS } from "@workos-inc/node";
+const workos = new WorkOS(process.env.WORKOS_API_KEY);
+
 const AUTHKIT_DOMAIN = process.env.AUTHKIT_DOMAIN;
 const MCP_SERVER_URL = process.env.MCP_SERVER_URL;
 
@@ -67,20 +70,15 @@ function checkAllowedDomain(email) {
   return { allowed: true, domain };
 }
 
-async function getEmailFromToken(token) {
-  const response = await fetch(`https://${AUTHKIT_DOMAIN}/oauth2/userinfo`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-
-  console.log("userinfo status:", response.status); 
-
-  if (!response.ok) return null;
-
-  const data = await response.json();
-
-  console.log("userinfo data:", JSON.stringify(data));
-
-  return data.email;
+async function getEmailFromUserId(userId) {
+  try {
+    const user = await workos.userManagement.getUser(userId);
+    console.log("WorkOS user email:", user.email); // temporal
+    return user.email;
+  } catch (err) {
+    console.error("Error obteniendo usuario de WorkOS:", err.message);
+    return null;
+  }
 }
 
 async function bearerTokenMiddleware(req, res, next) {
@@ -101,7 +99,7 @@ async function bearerTokenMiddleware(req, res, next) {
 
     console.log("JWT ok, sub:", payload.sub);
 
-    const email = await getEmailFromToken(token);
+    const email = await getEmailFromUserId(payload.sub);
 
     console.log("email obtenido:", email);
 
