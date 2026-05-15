@@ -12,6 +12,9 @@ import { createRemoteJWKSet, jwtVerify } from "jose";
 
 import { executeQueryTool } from "./tools/executeQuery.js";
 
+import { WorkOS } from "@workos-inc/node";
+const workos = new WorkOS(process.env.WORKOS_API_KEY);
+
 const AUTHKIT_DOMAIN = process.env.AUTHKIT_DOMAIN;
 const MCP_SERVER_URL = process.env.MCP_SERVER_URL;
 
@@ -56,6 +59,49 @@ app.get('/.well-known/oauth-authorization-server', async (req, res) => {
   res.json(metadata);
 });
 
+async function getEmailFromUserId(userId) {
+  try {
+    const user = await workos.userManagement.getUser(userId);
+    return user.email;
+  } catch (err) {
+    console.error("Error obteniendo usuario de WorkOS:", err.message);
+    return null;
+  }
+}
+
+async function isUserAllowed(userId, email) {
+  const userDomain = email?.split("@")[1];
+
+  try {
+    const organization = await workos.organizations.getOrganization(
+      process.env.WORKOS_ALLOWED_ORG_ID
+    );
+
+    const orgDomains = organization.domains.map((d) => d.domain);
+    console.log("Dominios de la org:", orgDomains);
+
+    if (orgDomains.includes(userDomain)) {
+      console.log(`Acceso por dominio: ${userDomain}`);
+      return true;
+    }
+
+    const memberships = await workos.userManagement.listOrganizationMemberships({
+      userId,
+      organizationId: process.env.WORKOS_ALLOWED_ORG_ID,
+      statuses: ["active"],
+    });
+
+    if (memberships.data.length > 0) {
+      console.log(`Acceso por membresía WorkOS: ${email}`);
+      return true;
+    }
+  } catch (err) {
+    console.error("Error verificando acceso:", err.message);
+  }
+
+  return false;
+}
+
 async function bearerTokenMiddleware(req, res, next) {
   const authHeader = req.headers.authorization;
   const token = authHeader?.match(/^Bearer (.+)$/)?.[1];
@@ -71,9 +117,24 @@ async function bearerTokenMiddleware(req, res, next) {
     const { payload } = await jwtVerify(token, JWKS, {
       issuer: `https://${AUTHKIT_DOMAIN}`,
     });
+    
+    const email = await getEmailFromUserId(payload.sub);
 
-    req.userId = payload.sub;
+    if (!email) {
+      return res
+        .set("WWW-Authenticate", WWW_AUTHENTICATE_HEADER)
+        .status(401)
+        .json({ error: "No se pudo obtener el email del usuario." });
+    }
 
+    const allowed = await isUserAllowed(payload.sub, email);
+    if (!allowed) {
+      return res
+        .set("WWW-Authenticate", WWW_AUTHENTICATE_HEADER)
+        .status(403)
+        .json({ error: "Usuario no autorizado." });
+    }
+    
     next();
   } catch (err) {
     return res
