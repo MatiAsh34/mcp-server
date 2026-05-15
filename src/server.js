@@ -72,9 +72,14 @@ async function getEmailFromToken(token) {
     headers: { Authorization: `Bearer ${token}` },
   });
 
+  console.log("userinfo status:", response.status); 
+
   if (!response.ok) return null;
 
   const data = await response.json();
+
+  console.log("userinfo data:", JSON.stringify(data));
+
   return data.email;
 }
 
@@ -94,7 +99,12 @@ async function bearerTokenMiddleware(req, res, next) {
       issuer: `https://${AUTHKIT_DOMAIN}`,
     });
 
+    console.log("JWT ok, sub:", payload.sub);
+
     const email = await getEmailFromToken(token);
+
+    console.log("email obtenido:", email);
+
     if (!email) {
       return res
         .set("WWW-Authenticate", WWW_AUTHENTICATE_HEADER)
@@ -103,6 +113,9 @@ async function bearerTokenMiddleware(req, res, next) {
     }
 
     const { allowed, domain } = checkAllowedDomain(email);
+
+    console.log("dominio:", domain, "| permitido:", allowed);
+
     if (!allowed) {
       return res
         .set("WWW-Authenticate", WWW_AUTHENTICATE_HEADER)
