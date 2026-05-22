@@ -66,7 +66,6 @@ async function getEmailFromUserId(userId) {
     const user = await workos.userManagement.getUser(userId);
     return user.email;
   } catch (err) {
-    console.error("Error obteniendo usuario de WorkOS:", err.message);
     return null;
   }
 }
@@ -80,10 +79,8 @@ async function isUserAllowed(userId, email) {
     );
 
     const orgDomains = organization.domains.map((d) => d.domain);
-    console.log("Dominios de la org:", orgDomains);
 
     if (orgDomains.includes(userDomain)) {
-      console.log(`Acceso por dominio: ${userDomain}`);
       return true;
     }
 
@@ -95,11 +92,9 @@ async function isUserAllowed(userId, email) {
       });
 
     if (memberships.data.length > 0) {
-      console.log(`Acceso por membresía WorkOS: ${email}`);
       return true;
     }
   } catch (err) {
-    console.error("Error verificando acceso:", err.message);
   }
 
   return false;
@@ -204,7 +199,6 @@ app.post("/mcp", async (req, res) => {
     await server.connect(transport);
     await transport.handleRequest(req, res, req.body);
   } catch (err) {
-    console.error("MCP request error:", err);
     if (!res.headersSent) {
       res.status(500).json({
         jsonrpc: "2.0",
