@@ -29,6 +29,13 @@ const WWW_AUTHENTICATE_HEADER = [
   'error_description="Authentication required for this tool"',
 ].join(", ");
 
+/**
+ * Como tu única tool es privada, declaramos OAuth.
+ *
+ * Nota:
+ * No usamos REQUIRED_SCOPES porque pediste no manejar scopes locales.
+ * Tus scopes/metadata quedan delegados a los endpoints .well-known y a WorkOS/AuthKit.
+ */
 const TOOL_SECURITY_SCHEMES = [
   {
     type: "oauth2",
@@ -36,6 +43,10 @@ const TOOL_SECURITY_SCHEMES = [
   },
 ];
 
+/**
+ * Métodos públicos para discovery/lifecycle.
+ * Esto permite lazy auth: el cliente puede inicializar y listar tools sin token.
+ */
 const PUBLIC_MCP_METHODS = new Set([
   "initialize",
   "notifications/initialized",
@@ -60,6 +71,36 @@ function callsProtectedMethod(body) {
   return false;
 }
 
+/**
+ * Detecta si conviene usar el challenge MCP-style:
+ *
+ * ChatGPT necesita que el error de auth se devuelva como resultado de tool con:
+ * _meta["mcp/www_authenticate"]
+ *
+ * Claude, en cambio, venía funcionando mejor con:
+ * HTTP 401 + WWW-Authenticate
+ *
+ * Si el User-Agent no es confiable en tu entorno, podés forzar modo con env:
+ *
+ * MCP_AUTH_CHALLENGE_MODE=chatgpt  -> siempre _meta["mcp/www_authenticate"]
+ * MCP_AUTH_CHALLENGE_MODE=claude   -> siempre HTTP 401
+ * MCP_AUTH_CHALLENGE_MODE=hybrid   -> autodetecta por User-Agent
+ */
+function shouldUseMcpToolAuthChallenge(req) {
+  const mode = process.env.MCP_AUTH_CHALLENGE_MODE || "hybrid";
+
+  if (mode === "chatgpt") return true;
+  if (mode === "claude") return false;
+
+  const userAgent = req.headers["user-agent"] || "";
+
+  return (
+    userAgent.includes("ChatGPT") ||
+    userAgent.includes("OpenAI") ||
+    userAgent.includes("Mozilla")
+  );
+}
+
 async function verifyToken(req) {
   const token = req.headers.authorization?.match(/^Bearer (.+)$/)?.[1];
   if (!token) return null;
@@ -75,6 +116,12 @@ async function verifyToken(req) {
   }
 }
 
+/**
+ * Respuesta para ChatGPT lazy auth.
+ *
+ * Esto NO es HTTP 401.
+ * Es un resultado MCP de la tool con _meta["mcp/www_authenticate"].
+ */
 function authRequiredToolResult(message = "Authentication required for this tool.") {
   return {
     content: [
@@ -136,6 +183,8 @@ async function isUserAllowed(userId, email) {
       return true;
     }
   } catch (err) {
+    // Mantenemos tu comportamiento original:
+    // si falla WorkOS o la consulta de org/membership, no autorizamos.
   }
 
   return false;
@@ -162,8 +211,15 @@ function createMcpServer(authContext = { ok: false, reason: "missing_token" }) {
           required: ["query"],
         },
 
+        /**
+         * Agregado para ChatGPT.
+         * La tool es privada y requiere OAuth.
+         */
         securitySchemes: TOOL_SECURITY_SCHEMES,
 
+        /**
+         * Mirror en _meta para clientes que leen securitySchemes desde _meta.
+         */
         _meta: {
           securitySchemes: TOOL_SECURITY_SCHEMES,
         },
@@ -173,6 +229,13 @@ function createMcpServer(authContext = { ok: false, reason: "missing_token" }) {
 
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     if (request.params.name === executeQueryTool.name) {
+      /**
+       * Si llegamos acá sin auth válida, significa que estamos en modo ChatGPT
+       * o modo MCP challenge.
+       *
+       * En modo Claude tradicional, ya habríamos respondido HTTP 401 antes
+       * de llegar a este handler.
+       */
       if (!authContext.ok) {
         if (authContext.reason === "forbidden") {
           return forbiddenToolResult("Usuario no autorizado.");
@@ -225,6 +288,8 @@ app.get("/.well-known/oauth-authorization-server", async (_req, res) => {
 
 app.post("/mcp", async (req, res) => {
   try {
+    const useMcpToolAuthChallenge = shouldUseMcpToolAuthChallenge(req);
+
     let authContext = {
       ok: false,
       reason: "missing_token",
@@ -236,6 +301,24 @@ app.post("/mcp", async (req, res) => {
       const payload = await verifyToken(req);
 
       if (!payload) {
+        /**
+         * Claude-style:
+         * respondemos HTTP 401 + WWW-Authenticate.
+         *
+         * ChatGPT-style:
+         * NO cortamos el request; dejamos que tools/call devuelva
+         * _meta["mcp/www_authenticate"].
+         */
+        if (!useMcpToolAuthChallenge) {
+          return res
+            .status(401)
+            .set("WWW-Authenticate", WWW_AUTHENTICATE_HEADER)
+            .json({
+              error: "invalid_token",
+              error_description: "Authentication required for this tool",
+            });
+        }
+
         authContext = {
           ok: false,
           reason: "missing_token",
@@ -246,6 +329,13 @@ app.post("/mcp", async (req, res) => {
         const email = await getEmailFromUserId(payload.sub);
 
         if (!email) {
+          if (!useMcpToolAuthChallenge) {
+            return res
+              .status(401)
+              .set("WWW-Authenticate", WWW_AUTHENTICATE_HEADER)
+              .json({ error: "No se pudo obtener el email del usuario." });
+          }
+
           authContext = {
             ok: false,
             reason: "missing_email",
@@ -255,12 +345,31 @@ app.post("/mcp", async (req, res) => {
         } else {
           const allowed = await isUserAllowed(payload.sub, email);
 
-          authContext = {
-            ok: allowed,
-            reason: allowed ? null : "forbidden",
-            payload,
-            email,
-          };
+          if (!allowed) {
+            if (!useMcpToolAuthChallenge) {
+              return res
+                .status(403)
+                .set(
+                  "WWW-Authenticate",
+                  `Bearer error="insufficient_scope", resource_metadata="${MCP_RESOURCE_METADATA_URL}"`
+                )
+                .json({ error: "Usuario no autorizado." });
+            }
+
+            authContext = {
+              ok: false,
+              reason: "forbidden",
+              payload,
+              email,
+            };
+          } else {
+            authContext = {
+              ok: true,
+              reason: null,
+              payload,
+              email,
+            };
+          }
         }
       }
     }
