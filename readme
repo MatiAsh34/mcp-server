@@ -1,0 +1,55 @@
+## Flujo de despliegue recomendado
+
+1. Descargar el repositorio, necesitas ingresar a una carpeta vacía y desde la consola escribir:
+```bash
+gh repo clone MatiAsh34/mcp-server
+```
+
+2. Subir a tu GitHub, necesitas crear un repositorio y guardar el link del repo, luego te ubicás en la dirección del repositorio que descargaste y tenés que escribir en la terminal estos comandos:
+```bash
+git init
+git add .
+git commit -m "first commit"
+git branch -M main
+git remote add origin https://github.com/tu-usuario/tu-repo.git
+git push -u origin main
+```
+
+3. Crear una cuenta en Neon
+   - 3.1 Crear un nuevo proyecto ingresando el nombre y lo demás como está
+   - 3.2 Ir al SQL Editor y pegar esto para crear la tabla de usuarios:
+CREATE TABLE usuarios (
+  id SERIAL PRIMARY KEY,
+  nombre TEXT NOT NULL,
+  email TEXT UNIQUE NOT NULL
+);
+   - 3.3 Ingresar usuarios a la DB:
+INSERT INTO usuarios (nombre, email) VALUES
+  ('Juan', 'juan@gmail.com'),
+  ('María', 'maria@gmail.com'),
+  ('Pedro', 'pedro@gmail.com');
+   - 3.4 Podés ingresar esto para confirmar: `SELECT * FROM usuarios;`
+   - 3.5 Ir a Dashboard → Connection String y guardar la URL
+
+4. Crear una cuenta en WorkOS
+   - 4.1 Dentro del Dashboard copiar la `WORKOS_API_KEY`
+   - 4.2 Dentro de Connect → Configuration activar **Client ID Metadata Document (CIMD)**
+   - 4.3 En MCP Resource Indicators ingresar la URL del MCP server con `/mcp` al final
+   - 4.4 Crear una organización con dominio `wes-it`, dentro de ahí copiar la API Key de la org (algo como `org_01KRP0B4Z...`)
+   - 4.5 Dentro de Domains copiar la URL de AuthKit
+   - 4.6 Opcionalmente activar dentro de Authentication → Methods el **Email + Password**
+
+5. Crear una cuenta en Render
+   - 5.1 Crear un nuevo Workspace
+   - 5.2 Seleccionar nuevo servicio web
+   - 5.3 Conectar la cuenta de GitHub con Render
+   - 5.4 Seleccionar el repositorio subido en el paso 2
+   - 5.5 Seleccionar Runtime: `Node`, Build Command: `npm install`, Start Command: `npm start`, Instance Type: `Free`
+   - 5.6 Agregar las variables de entorno:
+     - `DATABASE_URL` → especificada en el paso 3.5
+     - `WORKOS_API_KEY` → especificada en el paso 4.1
+     - `AUTHKIT_DOMAIN` → especificada en el paso 4.5
+     - `MCP_SERVER_URL` → especificada en el paso 5.7
+     - `WORKOS_ALLOWED_ORG_ID` → especificada en el paso 4.4
+     - `PORT` → `3000`
+   - 5.7 Copiar la URL del servidor generada por Render y pegarla en WorkOS paso 4.3
