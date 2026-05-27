@@ -1,19 +1,16 @@
 ## Flujo de despliegue recomendado
 
 1. Descargar el repositorio, necesitas ingresar a una carpeta vacía y desde la consola escribir:
-```bash
 gh repo clone MatiAsh34/mcp-server
-```
+
 
 2. Subir a tu GitHub, necesitas crear un repositorio y guardar el link del repo, luego te ubicás en la dirección del repositorio que descargaste y tenés que escribir en la terminal estos comandos:
-```bash
 git init
 git add .
 git commit -m "first commit"
 git branch -M main
 git remote add origin https://github.com/tu-usuario/tu-repo.git
 git push -u origin main
-```
 
 3. Crear una cuenta en Neon
    - 3.1 Crear un nuevo proyecto ingresando el nombre y lo demás como está
@@ -28,7 +25,7 @@ INSERT INTO usuarios (nombre, email) VALUES
   ('Juan', 'juan@gmail.com'),
   ('María', 'maria@gmail.com'),
   ('Pedro', 'pedro@gmail.com');
-   - 3.4 Podés ingresar esto para confirmar: `SELECT * FROM usuarios;`
+   - 3.4 Podés ingresar esto para confirmar: SELECT * FROM usuarios;
    - 3.5 Ir a Dashboard → Connection String y guardar la URL
 
 4. Crear una cuenta en WorkOS
