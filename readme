@@ -41,7 +41,7 @@ INSERT INTO users (name, email) VALUES
    - 5.2 Seleccionar nuevo servicio web
    - 5.3 Conectar la cuenta de GitHub con Render
    - 5.4 Seleccionar el repositorio subido en el paso 2
-   - 5.5 Seleccionar Runtime: `Node`, Build Command: `npm install`, Start Command: `npm start`, Instance Type: `Free`
+   - 5.5 Seleccionar Runtime: `Node`, Build Command: `npm install`, Start Command: `node src/server.js`, Instance Type: `Free`
    - 5.6 Agregar las variables de entorno:
      - `DATABASE_URL` → especificada en el paso 3.5
      - `WORKOS_API_KEY` → especificada en el paso 4.1
