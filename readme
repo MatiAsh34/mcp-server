@@ -50,3 +50,19 @@ INSERT INTO usuarios (nombre, email) VALUES
      - `WORKOS_ALLOWED_ORG_ID` → especificada en el paso 4.4
      - `PORT` → `3000`
    - 5.7 Copiar la URL del servidor generada por Render y pegarla en WorkOS paso 4.3
+
+6. Añadir conector a Claude.ai
+   - 6.1 Entrá a https://claude.ai
+   - 6.2 Click en tu perfil → Ajustes
+   - 6.3 Andá a Conectores → Personalizar
+   - 6.4 Click en el + → Añadir conector personalizado
+   - 6.5 Ingresá la URL de tu servidor: https://tu-server.onrender.com/mcp
+
+7. Probarlo en un chat
+   - 7.1 Abrí un chat nuevo
+   - 7.2 Escribí una consulta, por ejemplo: *"Decime los usuarios de la base de datos, utilizá el conector MCP"*
+   - 7.3 Te va a aparecer un recuadro para conectarte, iniciá sesión con tu cuenta de Google
+   - 7.4 Va a tirar un error porque tu cuenta todavía no es un usuario permitido, para solucionarlo:
+     - Andá a WorkOS → Organizations** → tu organización → Users → Add user
+     - Ahí va a aparecer la cuenta con la que intentaste autenticarte, la agregás
+   - 7.5 Volvé al chat y repetí la consulta, esta vez debería funcionar
