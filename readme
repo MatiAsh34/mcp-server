@@ -21,11 +21,11 @@ CREATE TABLE usuarios (
   email TEXT UNIQUE NOT NULL
 );
    - 3.3 Ingresar usuarios a la DB:
-INSERT INTO usuarios (nombre, email) VALUES
+INSERT INTO users (name, email) VALUES
   ('Juan', 'juan@gmail.com'),
   ('María', 'maria@gmail.com'),
   ('Pedro', 'pedro@gmail.com');
-   - 3.4 Podés ingresar esto para confirmar: SELECT * FROM usuarios;
+   - 3.4 Podés ingresar esto para confirmar: SELECT * FROM users;
    - 3.5 Ir a Dashboard → Connection String y guardar la URL
 
 4. Crear una cuenta en WorkOS
@@ -60,7 +60,7 @@ INSERT INTO usuarios (nombre, email) VALUES
 
 7. Probarlo en un chat
    - 7.1 Abrí un chat nuevo
-   - 7.2 Escribí una consulta, por ejemplo: *"Decime los usuarios de la base de datos, utilizá el conector MCP"*
+   - 7.2 Escribí una consulta, por ejemplo: *"Decime los usuarios de la tabla users de la base de datos, utilizá el conector MCP"*
    - 7.3 Te va a aparecer un recuadro para conectarte, iniciá sesión con tu cuenta de Google
    - 7.4 Va a tirar un error porque tu cuenta todavía no es un usuario permitido, para solucionarlo:
      - Andá a WorkOS → Organizations** → tu organización → Users → Add user
