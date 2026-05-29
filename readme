@@ -17,7 +17,7 @@ git push -u origin main
    - 3.2 Ir al SQL Editor y pegar esto para crear la tabla de usuarios:
 CREATE TABLE usuarios (
   id SERIAL PRIMARY KEY,
-  nombre TEXT NOT NULL,
+  name TEXT NOT NULL,
   email TEXT UNIQUE NOT NULL
 );
    - 3.3 Ingresar usuarios a la DB:
@@ -63,6 +63,6 @@ INSERT INTO users (name, email) VALUES
    - 7.2 Escribí una consulta, por ejemplo: *"Decime los usuarios de la tabla users de la base de datos, utilizá el conector MCP"*
    - 7.3 Te va a aparecer un recuadro para conectarte, iniciá sesión con tu cuenta de Google
    - 7.4 Va a tirar un error porque tu cuenta todavía no es un usuario permitido, para solucionarlo:
-     - Andá a WorkOS → Organizations** → tu organización → Users → Add user
+     - Andá a WorkOS → Organizations → tu organización → Users → Add user
      - Ahí va a aparecer la cuenta con la que intentaste autenticarte, la agregás
    - 7.5 Volvé al chat y repetí la consulta, esta vez debería funcionar
