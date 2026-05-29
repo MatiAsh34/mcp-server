@@ -4,7 +4,7 @@
 gh repo clone MatiAsh34/mcp-server
 
 
-2. Subir a tu GitHub, necesitas crear un repositorio y guardar el link del repo, luego te ubicás en la dirección del repositorio que descargaste y tenés que escribir en la terminal estos comandos:
+2. Subir a tu GitHub, necesitas crear un repositorio y guardar el link del repo, luego te ubicás en la dirección del directorio del repositorio que descargaste y tenés que escribir en la terminal estos comandos:
 git init
 git add .
 git commit -m "first commit"
@@ -15,7 +15,7 @@ git push -u origin main
 3. Crear una cuenta en Neon
    - 3.1 Crear un nuevo proyecto ingresando el nombre y lo demás como está
    - 3.2 Ir al SQL Editor y pegar esto para crear la tabla de usuarios:
-CREATE TABLE usuarios (
+CREATE TABLE users (
   id SERIAL PRIMARY KEY,
   name TEXT NOT NULL,
   email TEXT UNIQUE NOT NULL
@@ -30,7 +30,7 @@ INSERT INTO users (name, email) VALUES
 
 4. Crear una cuenta en WorkOS
    - 4.1 Dentro del Dashboard copiar la `WORKOS_API_KEY`
-   - 4.2 Dentro de Connect → Configuration activar **Client ID Metadata Document (CIMD)**
+   - 4.2 Dentro de Connect → Configuration: activar **Client ID Metadata Document (CIMD)**
    - 4.3 En MCP Resource Indicators ingresar la URL del MCP server con `/mcp` al final
    - 4.4 Crear una organización con dominio `wes-it.com`, dentro de ahí copiar la API Key de la org (algo como `org_01KRP0B4Z...`)
    - 4.5 Dentro de Domains copiar la URL de AuthKit
