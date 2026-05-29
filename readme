@@ -32,7 +32,7 @@ INSERT INTO users (name, email) VALUES
    - 4.1 Dentro del Dashboard copiar la `WORKOS_API_KEY`
    - 4.2 Dentro de Connect → Configuration activar **Client ID Metadata Document (CIMD)**
    - 4.3 En MCP Resource Indicators ingresar la URL del MCP server con `/mcp` al final
-   - 4.4 Crear una organización con dominio `wes-it`, dentro de ahí copiar la API Key de la org (algo como `org_01KRP0B4Z...`)
+   - 4.4 Crear una organización con dominio `wes-it.com`, dentro de ahí copiar la API Key de la org (algo como `org_01KRP0B4Z...`)
    - 4.5 Dentro de Domains copiar la URL de AuthKit
    - 4.6 Opcionalmente activar dentro de Authentication → Methods el **Email + Password**
 
